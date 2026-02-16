@@ -6,3 +6,4 @@ out/
 coverage/
 .claude/
 .DS_Store
+swagger.json

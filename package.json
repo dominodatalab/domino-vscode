@@ -150,21 +150,35 @@
       "dominoExplorer": [
         {
           "id": "dominoProjects",
-          "name": "Projects",
-          "when": "domino:authenticated"
+          "name": "Projects"
         },
         {
           "id": "dominoJobs",
-          "name": "Jobs",
-          "when": "domino:authenticated"
+          "name": "Jobs"
         },
         {
           "id": "dominoWorkspaces",
-          "name": "Workspaces",
-          "when": "domino:authenticated"
+          "name": "Workspaces"
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "dominoProjects",
+        "contents": "You need to authenticate with Domino Data Lab to view your projects.\n[Authenticate](command:domino.authenticate)",
+        "when": "!domino:authenticated"
+      },
+      {
+        "view": "dominoJobs",
+        "contents": "Authenticate with Domino to view your jobs.\n[Authenticate](command:domino.authenticate)",
+        "when": "!domino:authenticated"
+      },
+      {
+        "view": "dominoWorkspaces",
+        "contents": "Authenticate with Domino to view your workspaces.\n[Authenticate](command:domino.authenticate)",
+        "when": "!domino:authenticated"
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {

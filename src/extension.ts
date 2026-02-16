@@ -989,15 +989,9 @@ async function checkAuthentication() {
     const autoRefreshEnabled = config.get<boolean>('autoRefreshEnabled', true);
     isAutoRefreshEnabled = autoRefreshEnabled;
     
-    if (apiUrl) {
-        // Check if we have stored credentials and try to authenticate
-        vscode.commands.executeCommand('setContext', 'domino:authenticated', true);
-        
-        // Start auto-refresh if enabled and we have authentication
-        if (isAutoRefreshEnabled) {
-            startAutoRefresh();
-        }
-    }
+    // API key is stored in memory only, so we're never authenticated on startup.
+    // Always start unauthenticated and let the user re-authenticate.
+    vscode.commands.executeCommand('setContext', 'domino:authenticated', false);
 }
 
 export function deactivate() {

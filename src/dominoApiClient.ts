@@ -140,13 +140,14 @@ export class DominoApiClient {
         }
 
         try {
-            // Use page_size parameter as that's what the API expects
+            // Domino API uses page_no for pagination and snake_case param names
+            const pageNo = Math.floor(offset / limit) + 1;
             const params = new URLSearchParams({
                 projectId: this.currentProjectId,
                 page_size: limit.toString(),
-                offset: offset.toString(),
-                orderBy: 'number',
-                sortBy: 'desc'
+                page_no: pageNo.toString(),
+                order_by: 'number',
+                sort_by: 'desc'
             });
 
             const endpoint = `/jobs/?${params.toString()}`;
