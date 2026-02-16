@@ -1,0 +1,370 @@
+{
+  "name": "domino-data-lab-vscode-extension",
+  "displayName": "Domino Data Lab ",
+  "description": "VS Code extension for interacting with Domino Data Lab platform",
+  "version": "1.0.0",
+  "publisher": "Domino Data Lab",
+  "icon": "icons/domino-logo-black.png",
+  "author": {
+    "name": "Blake Moore"
+  },
+  "engines": {
+    "vscode": "^1.104.1"
+  },
+  "categories": [
+    "Other",
+    "Machine Learning",
+    "Data Science"
+  ],
+  "keywords": [
+    "domino",
+    "domino data lab",
+    "data science",
+    "machine learning",
+    "mlops"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dominodatalab/vscode-extension.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dominodatalab/vscode-extension/issues"
+  },
+  "homepage": "https://github.com/dominodatalab/vscode-extension/blob/main/README.md",
+  "license": "Apache2",
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "extensionKind": [
+    "ui"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "domino.loadMoreJobs",
+        "title": "Load More Jobs",
+        "category": "Domino",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "domino.startJobFromPanel",
+        "title": "Start New Job",
+        "category": "Domino",
+        "icon": "$(play)"
+      },
+      {
+        "command": "domino.authenticate",
+        "title": "Authenticate with Domino",
+        "category": "Domino"
+      },
+      {
+        "command": "domino.selectProject",
+        "title": "Select Project",
+        "category": "Domino"
+      },
+      {
+        "command": "domino.createProject",
+        "title": "Create New Project",
+        "category": "Domino"
+      },
+      {
+        "command": "domino.runJob",
+        "title": "Run Job",
+        "category": "Domino"
+      },
+      {
+        "command": "domino.viewJobs",
+        "title": "View Jobs",
+        "category": "Domino"
+      },
+      {
+        "command": "domino.startWorkspace",
+        "title": "Start Workspace",
+        "category": "Domino",
+        "icon": "$(play)"
+      },
+      {
+        "command": "domino.stopWorkspace",
+        "title": "Stop Workspace",
+        "category": "Domino",
+        "icon": "$(stop)"
+      },
+      {
+        "command": "domino.openWorkspace",
+        "title": "Open Workspace in Browser",
+        "category": "Domino",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "domino.commitWorkspace",
+        "title": "Commit Workspace Changes",
+        "category": "Domino",
+        "icon": "$(git-commit)"
+      },
+      {
+        "command": "domino.refreshProjects",
+        "title": "Refresh Projects",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "domino.refreshJobs",
+        "title": "Refresh Jobs",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "domino.refreshWorkspaces",
+        "title": "Refresh Workspaces",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "domino.openJobInBrowser",
+        "title": "Open Job in Browser",
+        "category": "Domino",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "domino.toggleAutoRefresh",
+        "title": "Toggle Auto-Refresh (30s)",
+        "category": "Domino",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "domino.enableAutoRefresh",
+        "title": "Enable Auto-Refresh",
+        "category": "Domino",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "domino.disableAutoRefresh",
+        "title": "Disable Auto-Refresh",
+        "category": "Domino",
+        "icon": "$(sync-ignored)"
+      },
+      {
+        "command": "domino.runJobWithFile",
+        "title": "Run Job in Domino",
+        "category": "Domino",
+        "icon": "$(play)"
+      }
+    ],
+    "views": {
+      "dominoExplorer": [
+        {
+          "id": "dominoProjects",
+          "name": "Projects",
+          "when": "domino:authenticated"
+        },
+        {
+          "id": "dominoJobs",
+          "name": "Jobs",
+          "when": "domino:authenticated"
+        },
+        {
+          "id": "dominoWorkspaces",
+          "name": "Workspaces",
+          "when": "domino:authenticated"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "dominoExplorer",
+          "title": "Domino Data Lab",
+          "icon": "icons/domino-logo.svg"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "domino.refreshProjects",
+          "when": "view == dominoProjects",
+          "group": "navigation"
+        },
+        {
+          "command": "domino.refreshJobs",
+          "when": "view == dominoJobs",
+          "group": "navigation"
+        },
+        {
+          "command": "domino.refreshWorkspaces",
+          "when": "view == dominoWorkspaces",
+          "group": "navigation"
+        },
+        {
+          "command": "domino.toggleAutoRefresh",
+          "when": "view == dominoJobs || view == dominoWorkspaces",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "domino.loadMoreJobs",
+          "when": "view == dominoJobs && viewItem == loadMore",
+          "group": "inline"
+        },
+        {
+          "command": "domino.startJobFromPanel",
+          "when": "view == dominoJobs && viewItem == jobAction",
+          "group": "inline"
+        },
+        {
+          "command": "domino.selectProject",
+          "when": "view == dominoProjects && viewItem == project",
+          "group": "inline"
+        },
+        {
+          "command": "domino.runJob",
+          "when": "view == dominoProjects && viewItem == project",
+          "group": "project"
+        },
+        {
+          "command": "domino.openJobInBrowser",
+          "when": "view == dominoJobs && viewItem == job",
+          "group": "inline"
+        },
+        {
+          "command": "domino.startWorkspace",
+          "when": "view == dominoWorkspaces && viewItem == workspace-stopped",
+          "group": "inline"
+        },
+        {
+          "command": "domino.stopWorkspace",
+          "when": "view == dominoWorkspaces && viewItem == workspace-running",
+          "group": "inline"
+        },
+        {
+          "command": "domino.openWorkspace",
+          "when": "view == dominoWorkspaces && viewItem == workspace-running",
+          "group": "inline"
+        },
+        {
+          "command": "domino.commitWorkspace",
+          "when": "view == dominoWorkspaces && viewItem == workspace-running",
+          "group": "inline"
+        },
+        {
+          "command": "domino.openWorkspace",
+          "when": "view == dominoWorkspaces && viewItem == workspace-running",
+          "group": "workspace"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "domino.toggleAutoRefresh",
+          "when": "domino:authenticated"
+        },
+        {
+          "command": "domino.enableAutoRefresh",
+          "when": "domino:authenticated"
+        },
+        {
+          "command": "domino.disableAutoRefresh",
+          "when": "domino:authenticated"
+        },
+        {
+          "command": "domino.runJobWithFile",
+          "when": "domino:authenticated"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "domino.runJobWithFile",
+          "when": "domino:authenticated && resourceExtname == .py",
+          "group": "domino@1"
+        },
+        {
+          "command": "domino.runJobWithFile", 
+          "when": "domino:authenticated && resourceExtname =~ /\\.(r|R)$/",
+          "group": "domino@1"
+        },
+        {
+          "command": "domino.runJobWithFile",
+          "when": "domino:authenticated && resourceExtname == .ipynb",
+          "group": "domino@1"
+        },
+        {
+          "command": "domino.runJobWithFile",
+          "when": "domino:authenticated && resourceExtname =~ /\\.(js|ts)$/",
+          "group": "domino@1"
+        },
+        {
+          "command": "domino.runJobWithFile",
+          "when": "domino:authenticated && resourceExtname == .sh",
+          "group": "domino@1"
+        },
+        {
+          "command": "domino.runJobWithFile",
+          "when": "domino:authenticated && resourceExtname =~ /\\.(scala|java|sql)$/",
+          "group": "domino@1"
+        },
+        {
+          "command": "domino.runJobWithFile",
+          "when": "domino:authenticated && resourceScheme == file && !explorerResourceIsFolder",
+          "group": "domino@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Domino Data Lab",
+      "properties": {
+        "domino.apiUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Domino API URL (e.g., https://your-domino-instance.com)"
+        },
+        "domino.autoRefreshEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic refresh of jobs and workspaces every 30 seconds"
+        },
+        "domino.autoRefreshInterval": {
+          "type": "number",
+          "default": 30000,
+          "minimum": 5000,
+          "maximum": 300000,
+          "description": "Auto-refresh interval in milliseconds (5s to 5min)"
+        },
+        "domino.fileRunnerDefaults": {
+          "type": "object",
+          "default": {
+            "python": "python \"{file}\"",
+            "r": "Rscript \"{file}\"",
+            "javascript": "node \"{file}\"",
+            "typescript": "npx ts-node \"{file}\"",
+            "shell": "bash \"{file}\"",
+            "notebook": "jupyter nbconvert --execute --to notebook --inplace \"{file}\""
+          },
+          "description": "Default commands for running different file types in Domino jobs"
+        },
+        "domino.sshTunnelStartPort": {
+          "type": "number",
+          "default": 2222,
+          "minimum": 1024,
+          "maximum": 65535,
+          "description": "Starting port number for SSH tunnels (will increment if port is in use)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/node": "16.x",
+    "typescript": "^4.9.4",
+    "@typescript-eslint/eslint-plugin": "^5.45.0",
+    "@typescript-eslint/parser": "^5.45.0",
+    "eslint": "^8.28.0"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "form-data": "^4.0.0"
+  }
+}
