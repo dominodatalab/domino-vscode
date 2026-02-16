@@ -8,7 +8,10 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeI
     private _onDidChangeTreeData: vscode.EventEmitter<WorkspaceTreeItem | undefined | null | void> = new vscode.EventEmitter<WorkspaceTreeItem | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<WorkspaceTreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
-    constructor(private dominoClient: DominoApiClient) {
+    constructor(
+        private dominoClient: DominoApiClient,
+        private activeTunnels: Map<string, { port: number }> = new Map()
+    ) {
         console.log('WorkspaceProvider: Constructor called');
     }
 
@@ -95,6 +98,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeI
                     workspaceUrl = `https://${host}/workspace/${workspaceId}`;
                 }
                 
+                const tunnel = this.activeTunnels.get(workspaceId);
                 return new WorkspaceItem(
                     workspaceName,
                     status,
@@ -102,7 +106,8 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeI
                     workspaceUrl,
                     createdTime,
                     workspace.ownerName || 'Unknown',
-                    vscode.TreeItemCollapsibleState.None
+                    vscode.TreeItemCollapsibleState.None,
+                    tunnel?.port
                 );
             });
             
@@ -128,35 +133,45 @@ class WorkspaceItem extends vscode.TreeItem {
         public readonly url: string,
         public readonly startedTime: string,
         public readonly ownerName: string,
-        public readonly collapsibleState: vscode.TreeItemCollapsibleState
+        public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+        public readonly tunnelPort?: number
     ) {
         super(label, collapsibleState);
-        
+
         // Create enhanced description with status indicator and owner info
         const statusIndicator = this.getStatusIndicator(status);
         const ownerInfo = ownerName && ownerName !== 'Unknown' ? ` • by ${ownerName}` : '';
-        this.description = `${statusIndicator} ${status}${ownerInfo}`;
-        
+        const sshInfo = tunnelPort ? ` • SSH :${tunnelPort}` : '';
+        this.description = `${statusIndicator} ${status}${ownerInfo}${sshInfo}`;
+
         // Enhanced tooltip with markdown formatting
         const formattedTime = startedTime ? new Date(startedTime).toLocaleString() : 'N/A';
+        const sshTooltip = tunnelPort
+            ? `\n🔌 **SSH Tunnel:** Active on port ${tunnelPort}  \n💻 **SSH Command:** \`ssh -p ${tunnelPort} ubuntu@localhost\``
+            : '';
         this.tooltip = new vscode.MarkdownString(`
 **${label}**
 
-${statusIndicator} **Status:** ${status}  
-👤 **Owner:** ${ownerName}  
-📅 **Created:** ${formattedTime}  
-🆔 **Workspace ID:** \`${workspaceId}\`  
-${url ? `🔗 **URL:** ${url}` : ''}
+${statusIndicator} **Status:** ${status}
+👤 **Owner:** ${ownerName}
+📅 **Created:** ${formattedTime}
+🆔 **Workspace ID:** \`${workspaceId}\`
+${url ? `🔗 **URL:** ${url}` : ''}${sshTooltip}
 
-${status.toLowerCase() === 'started' || status.toLowerCase() === 'running' 
-    ? '*Workspace is ready for use*' 
+${status.toLowerCase() === 'started' || status.toLowerCase() === 'running'
+    ? '*Workspace is ready for use*'
     : '*Start workspace to begin working*'}
         `);
-        
-        // Set context value based on status for menu items
-        this.contextValue = (status.toLowerCase() === 'started' || status.toLowerCase() === 'running') 
-            ? 'workspace-running' 
-            : 'workspace-stopped';
+
+        // Set context value based on status and tunnel state for menu items
+        const isRunning = status.toLowerCase() === 'started' || status.toLowerCase() === 'running';
+        if (isRunning && tunnelPort) {
+            this.contextValue = 'workspace-running-ssh';
+        } else if (isRunning) {
+            this.contextValue = 'workspace-running';
+        } else {
+            this.contextValue = 'workspace-stopped';
+        }
         
         // Set icon and color based on status
         switch (status.toLowerCase()) {

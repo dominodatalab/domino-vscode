@@ -4,10 +4,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as http from 'http';
+import * as net from 'net';
 import { DominoApiClient } from './dominoApiClient';
 import { ProjectProvider } from './projectProvider';
 import { JobProvider } from './jobProvider';
 import { WorkspaceProvider } from './workspaceProvider';
+
+// SSH tunnel tracking
+interface SshTunnel {
+    terminal: vscode.Terminal;
+    port: number;
+    workspaceId: string;
+    workspaceName: string;
+}
+
+const activeTunnels: Map<string, SshTunnel> = new Map();
 
 // Check if process is still running
 function isProcessRunning(pid: number | undefined): boolean {
@@ -17,6 +28,324 @@ function isProcessRunning(pid: number | undefined): boolean {
         return true;
     } catch (error) {
         return false;
+    }
+}
+
+// --- SSH Tunnel Utilities ---
+
+function isDomCliInstalled(): Promise<boolean> {
+    return new Promise((resolve) => {
+        child_process.exec('dom --version', (error) => {
+            resolve(!error);
+        });
+    });
+}
+
+function getNextAvailablePort(): Promise<number> {
+    const config = vscode.workspace.getConfiguration('domino');
+    const startPort = config.get<number>('sshTunnelStartPort', 2222);
+
+    // Collect ports already in use by active tunnels
+    const usedPorts = new Set<number>();
+    for (const tunnel of activeTunnels.values()) {
+        usedPorts.add(tunnel.port);
+    }
+
+    // Find the next port starting from startPort that isn't used by a tunnel
+    let candidate = startPort;
+    while (usedPorts.has(candidate)) {
+        candidate++;
+    }
+
+    // Verify the port is actually free with a TCP bind test
+    return new Promise((resolve, reject) => {
+        const tryPort = (port: number) => {
+            const server = net.createServer();
+            server.once('error', () => {
+                // Port in use, try next
+                tryPort(port + 1);
+            });
+            server.once('listening', () => {
+                server.close(() => resolve(port));
+            });
+            server.listen(port, '127.0.0.1');
+        };
+        tryPort(candidate);
+    });
+}
+
+const SSH_CONFIG_PATH = path.join(os.homedir(), '.ssh', 'config');
+
+function addSshConfigEntry(workspaceId: string, port: number): void {
+    const marker = `domino-vscode-extension:${workspaceId}`;
+    const entry = [
+        `# ${marker}`,
+        `Host ${workspaceId}`,
+        `    HostName localhost`,
+        `    Port ${port}`,
+        `    User ubuntu`,
+        `    StrictHostKeyChecking no`,
+        `    UserKnownHostsFile /dev/null`,
+        `# ${marker}:end`,
+        ''
+    ].join('\n');
+
+    // Ensure ~/.ssh directory exists
+    const sshDir = path.dirname(SSH_CONFIG_PATH);
+    if (!fs.existsSync(sshDir)) {
+        fs.mkdirSync(sshDir, { mode: 0o700, recursive: true });
+    }
+
+    // Remove any existing entry for this workspace first
+    removeSshConfigEntry(workspaceId);
+
+    // Append the new entry
+    const existing = fs.existsSync(SSH_CONFIG_PATH) ? fs.readFileSync(SSH_CONFIG_PATH, 'utf-8') : '';
+    const separator = existing.length > 0 && !existing.endsWith('\n') ? '\n' : '';
+    fs.writeFileSync(SSH_CONFIG_PATH, existing + separator + entry, 'utf-8');
+}
+
+function removeSshConfigEntry(workspaceId: string): void {
+    if (!fs.existsSync(SSH_CONFIG_PATH)) {
+        return;
+    }
+
+    const content = fs.readFileSync(SSH_CONFIG_PATH, 'utf-8');
+    const marker = `domino-vscode-extension:${workspaceId}`;
+    const startMarker = `# ${marker}`;
+    const endMarker = `# ${marker}:end`;
+
+    const lines = content.split('\n');
+    const filteredLines: string[] = [];
+    let inside = false;
+
+    for (const line of lines) {
+        if (line.trim() === startMarker) {
+            inside = true;
+            continue;
+        }
+        if (line.trim() === endMarker) {
+            inside = false;
+            continue;
+        }
+        if (!inside) {
+            filteredLines.push(line);
+        }
+    }
+
+    fs.writeFileSync(SSH_CONFIG_PATH, filteredLines.join('\n'), 'utf-8');
+}
+
+function cleanupAllSshConfigEntries(): void {
+    if (!fs.existsSync(SSH_CONFIG_PATH)) {
+        return;
+    }
+
+    const content = fs.readFileSync(SSH_CONFIG_PATH, 'utf-8');
+    const lines = content.split('\n');
+    const filteredLines: string[] = [];
+    let inside = false;
+
+    for (const line of lines) {
+        if (line.trim().startsWith('# domino-vscode-extension:') && !line.trim().endsWith(':end')) {
+            inside = true;
+            continue;
+        }
+        if (line.trim().startsWith('# domino-vscode-extension:') && line.trim().endsWith(':end')) {
+            inside = false;
+            continue;
+        }
+        if (!inside) {
+            filteredLines.push(line);
+        }
+    }
+
+    fs.writeFileSync(SSH_CONFIG_PATH, filteredLines.join('\n'), 'utf-8');
+}
+
+// --- SSH Tunnel Commands ---
+
+async function connectSSH(workspaceItem?: any) {
+    try {
+        if (!workspaceItem || !workspaceItem.workspaceId) {
+            vscode.window.showWarningMessage('Please select a running workspace to connect via SSH');
+            return;
+        }
+
+        const workspaceId: string = workspaceItem.workspaceId;
+        const workspaceName: string = workspaceItem.label || workspaceId;
+
+        // Check for existing tunnel
+        if (activeTunnels.has(workspaceId)) {
+            const existing = activeTunnels.get(workspaceId)!;
+            const action = await vscode.window.showInformationMessage(
+                `SSH tunnel already active for "${workspaceName}" on port ${existing.port}`,
+                'Open Remote-SSH',
+                'Show Details'
+            );
+            if (action === 'Open Remote-SSH') {
+                await openRemoteSshWindow(workspaceId, existing.port);
+            } else if (action === 'Show Details') {
+                showTunnelDetails(workspaceId, existing.port);
+            }
+            return;
+        }
+
+        // Verify dom CLI is installed
+        const domInstalled = await isDomCliInstalled();
+        if (!domInstalled) {
+            vscode.window.showErrorMessage(
+                'The `dom` CLI is not installed or not in your PATH. Please install it to use SSH tunnels.',
+                'Learn More'
+            ).then(action => {
+                if (action === 'Learn More') {
+                    vscode.env.openExternal(vscode.Uri.parse('https://docs.dominodatalab.com/en/latest/user_guide/domino_cli.html'));
+                }
+            });
+            return;
+        }
+
+        // Get API host and find available port
+        const apiUrl = dominoClient.apiUrl;
+        if (!apiUrl) {
+            vscode.window.showErrorMessage('Domino API URL not configured. Please authenticate first.');
+            return;
+        }
+
+        const port = await getNextAvailablePort();
+
+        // Build the dom connect command
+        const command = `dom connect ${workspaceId} --domino-api-host=${apiUrl} -l ubuntu`;
+        console.log(`Running in terminal: ${command}`);
+
+        // Create a visible terminal so the user can see auth flow and output
+        const terminal = vscode.window.createTerminal({
+            name: `SSH: ${workspaceName}`,
+        });
+        terminal.show();
+        terminal.sendText(command);
+
+        // Store the tunnel immediately so the tree updates
+        const tunnel: SshTunnel = {
+            terminal,
+            port,
+            workspaceId,
+            workspaceName
+        };
+        activeTunnels.set(workspaceId, tunnel);
+        addSshConfigEntry(workspaceId, port);
+        workspaceProvider.refresh();
+
+        // Brief pause to let dom connect start and open the browser for auth
+        await new Promise(resolve => setTimeout(resolve, 2500));
+
+        // Check auto-connect setting
+        const config = vscode.workspace.getConfiguration('domino');
+        const autoConnect = config.get<boolean>('sshAutoConnect', true);
+
+        if (autoConnect) {
+            openRemoteSshWindow(workspaceId, port);
+        } else {
+            vscode.window.showInformationMessage(
+                `SSH tunnel to "${workspaceName}" established on port ${port}`,
+                'Connect Remote-SSH',
+                'Copy SSH Command'
+            ).then(action => {
+                if (action === 'Connect Remote-SSH') {
+                    openRemoteSshWindow(workspaceId, port);
+                } else if (action === 'Copy SSH Command') {
+                    vscode.env.clipboard.writeText(`ssh -p ${port} ubuntu@localhost`);
+                    vscode.window.showInformationMessage('SSH command copied to clipboard');
+                }
+            });
+        }
+
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to connect SSH tunnel: ${error}`);
+    }
+}
+
+async function openRemoteSshWindow(workspaceId: string, port: number): Promise<void> {
+    const remoteUri = vscode.Uri.parse(`vscode-remote://ssh-remote+${workspaceId}/mnt`);
+
+    try {
+        // Primary: open a new window connected to the remote host
+        await vscode.commands.executeCommand('vscode.openFolder', remoteUri, { forceNewWindow: true });
+        return;
+    } catch (err) {
+        console.log('vscode.openFolder with remote URI failed, trying fallback:', err);
+    }
+
+    try {
+        // Fallback: use the Remote-SSH extension command
+        await vscode.commands.executeCommand('opensshremote.openEmptyWindow', {
+            host: `${workspaceId}`
+        });
+        return;
+    } catch (err) {
+        console.log('opensshremote.openEmptyWindow failed, offering to install:', err);
+    }
+
+    // Both failed — offer to install Remote-SSH
+    const action = await vscode.window.showWarningMessage(
+        'Could not open Remote-SSH window. Is the Remote-SSH extension installed?',
+        'Install Remote-SSH',
+        'Copy SSH Command'
+    );
+
+    if (action === 'Install Remote-SSH') {
+        vscode.commands.executeCommand(
+            'workbench.extensions.installExtension',
+            'ms-vscode-remote.remote-ssh'
+        );
+    } else if (action === 'Copy SSH Command') {
+        vscode.env.clipboard.writeText(`ssh -p ${port} ubuntu@localhost`);
+        vscode.window.showInformationMessage('SSH command copied to clipboard');
+    }
+}
+
+function showTunnelDetails(workspaceId: string, port: number): void {
+    const sshCommand = `ssh -p ${port} ubuntu@localhost`;
+    vscode.window.showInformationMessage(
+        `SSH Tunnel — Port: ${port} | Host: ${workspaceId}`,
+        'Copy SSH Command',
+        'Open Remote-SSH'
+    ).then(action => {
+        if (action === 'Copy SSH Command') {
+            vscode.env.clipboard.writeText(sshCommand);
+            vscode.window.showInformationMessage('SSH command copied to clipboard');
+        } else if (action === 'Open Remote-SSH') {
+            openRemoteSshWindow(workspaceId, port);
+        }
+    });
+}
+
+async function disconnectSSH(workspaceItem?: any) {
+    try {
+        if (!workspaceItem || !workspaceItem.workspaceId) {
+            vscode.window.showWarningMessage('Please select a workspace to disconnect SSH');
+            return;
+        }
+
+        const workspaceId: string = workspaceItem.workspaceId;
+        const tunnel = activeTunnels.get(workspaceId);
+
+        if (!tunnel) {
+            vscode.window.showInformationMessage('No active SSH tunnel for this workspace');
+            return;
+        }
+
+        // Close the tunnel terminal
+        tunnel.terminal.dispose();
+        activeTunnels.delete(workspaceId);
+        removeSshConfigEntry(workspaceId);
+        workspaceProvider.refresh();
+
+        vscode.window.showInformationMessage(
+            `SSH tunnel to "${tunnel.workspaceName}" disconnected`
+        );
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to disconnect SSH tunnel: ${error}`);
     }
 }
 
@@ -705,6 +1034,14 @@ async function stopWorkspace(workspaceItem?: any) {
             title: 'Stopping workspace...',
             cancellable: false
         }, async () => {
+            // Clean up any active SSH tunnel for this workspace
+            const tunnel = activeTunnels.get(workspaceId);
+            if (tunnel) {
+                tunnel.terminal.dispose();
+                activeTunnels.delete(workspaceId);
+                removeSshConfigEntry(workspaceId);
+            }
+
             await dominoClient.stopWorkspace(workspaceId);
             vscode.window.showInformationMessage('Workspace stopped successfully');
         });
@@ -1197,6 +1534,13 @@ export function deactivate() {
         clearInterval(autoRefreshTimer);
         autoRefreshTimer = undefined;
     }
+
+    // Clean up SSH tunnels
+    for (const tunnel of activeTunnels.values()) {
+        tunnel.terminal.dispose();
+    }
+    activeTunnels.clear();
+    cleanupAllSshConfigEntries();
 }
 
 let dominoClient: DominoApiClient;
@@ -1224,7 +1568,7 @@ export function activate(context: vscode.ExtensionContext) {
     dominoClient = new DominoApiClient();
     projectProvider = new ProjectProvider(dominoClient);
     jobProvider = new JobProvider(dominoClient);
-    workspaceProvider = new WorkspaceProvider(dominoClient);
+    workspaceProvider = new WorkspaceProvider(dominoClient, activeTunnels);
 
     // Register tree data providers
     vscode.window.registerTreeDataProvider('dominoProjects', projectProvider);
@@ -1255,7 +1599,10 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('domino.enableAutoRefresh', enableAutoRefresh),
         vscode.commands.registerCommand('domino.disableAutoRefresh', disableAutoRefresh),
         // File context menu command
-        vscode.commands.registerCommand('domino.runJobWithFile', runJobWithFile)
+        vscode.commands.registerCommand('domino.runJobWithFile', runJobWithFile),
+        // SSH tunnel commands
+        vscode.commands.registerCommand('domino.connectSSH', connectSSH),
+        vscode.commands.registerCommand('domino.disconnectSSH', disconnectSSH)
     ];
 
     context.subscriptions.push(...commands);
@@ -1269,6 +1616,34 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
     });
+
+    // Add SSH tunnel cleanup disposable
+    context.subscriptions.push({
+        dispose: () => {
+            for (const tunnel of activeTunnels.values()) {
+                tunnel.terminal.dispose();
+            }
+            activeTunnels.clear();
+            cleanupAllSshConfigEntries();
+        }
+    });
+
+    // Listen for terminal close to clean up tunnels
+    context.subscriptions.push(
+        vscode.window.onDidCloseTerminal((closedTerminal) => {
+            for (const [id, tunnel] of activeTunnels.entries()) {
+                if (tunnel.terminal === closedTerminal) {
+                    activeTunnels.delete(id);
+                    removeSshConfigEntry(id);
+                    workspaceProvider.refresh();
+                    vscode.window.showWarningMessage(
+                        `SSH tunnel to "${tunnel.workspaceName}" disconnected`
+                    );
+                    break;
+                }
+            }
+        })
+    );
 
     // Check if already authenticated
     checkAuthentication();

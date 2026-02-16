@@ -150,6 +150,18 @@
         "title": "Run Job in Domino",
         "category": "Domino",
         "icon": "$(play)"
+      },
+      {
+        "command": "domino.connectSSH",
+        "title": "Connect SSH Tunnel",
+        "category": "Domino",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "domino.disconnectSSH",
+        "title": "Disconnect SSH Tunnel",
+        "category": "Domino",
+        "icon": "$(debug-disconnect)"
       }
     ],
     "views": {
@@ -269,8 +281,38 @@
           "group": "inline"
         },
         {
+          "command": "domino.connectSSH",
+          "when": "view == dominoWorkspaces && viewItem == workspace-running",
+          "group": "inline"
+        },
+        {
           "command": "domino.openWorkspace",
           "when": "view == dominoWorkspaces && viewItem == workspace-running",
+          "group": "workspace"
+        },
+        {
+          "command": "domino.stopWorkspace",
+          "when": "view == dominoWorkspaces && viewItem == workspace-running-ssh",
+          "group": "inline"
+        },
+        {
+          "command": "domino.openWorkspace",
+          "when": "view == dominoWorkspaces && viewItem == workspace-running-ssh",
+          "group": "inline"
+        },
+        {
+          "command": "domino.commitWorkspace",
+          "when": "view == dominoWorkspaces && viewItem == workspace-running-ssh",
+          "group": "inline"
+        },
+        {
+          "command": "domino.disconnectSSH",
+          "when": "view == dominoWorkspaces && viewItem == workspace-running-ssh",
+          "group": "inline"
+        },
+        {
+          "command": "domino.openWorkspace",
+          "when": "view == dominoWorkspaces && viewItem == workspace-running-ssh",
           "group": "workspace"
         },
         {
@@ -298,6 +340,14 @@
         },
         {
           "command": "domino.runJobWithFile",
+          "when": "domino:authenticated"
+        },
+        {
+          "command": "domino.connectSSH",
+          "when": "domino:authenticated"
+        },
+        {
+          "command": "domino.disconnectSSH",
           "when": "domino:authenticated"
         }
       ],
@@ -377,6 +427,11 @@
           "minimum": 1024,
           "maximum": 65535,
           "description": "Starting port number for SSH tunnels (will increment if port is in use)"
+        },
+        "domino.sshAutoConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically open a Remote-SSH window after establishing an SSH tunnel to a workspace"
         }
       }
     }
