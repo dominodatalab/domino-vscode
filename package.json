@@ -101,6 +101,12 @@
         "icon": "$(git-commit)"
       },
       {
+        "command": "domino.createWorkspace",
+        "title": "Create New Workspace",
+        "category": "Domino",
+        "icon": "$(add)"
+      },
+      {
         "command": "domino.refreshProjects",
         "title": "Refresh Projects",
         "icon": "$(refresh)"
@@ -206,6 +212,11 @@
           "group": "navigation"
         },
         {
+          "command": "domino.createWorkspace",
+          "when": "view == dominoWorkspaces && domino:authenticated",
+          "group": "navigation"
+        },
+        {
           "command": "domino.toggleAutoRefresh",
           "when": "view == dominoJobs || view == dominoWorkspaces",
           "group": "navigation"
@@ -261,9 +272,18 @@
           "command": "domino.openWorkspace",
           "when": "view == dominoWorkspaces && viewItem == workspace-running",
           "group": "workspace"
+        },
+        {
+          "command": "domino.createWorkspace",
+          "when": "view == dominoWorkspaces && viewItem == workspaceAction",
+          "group": "inline"
         }
       ],
       "commandPalette": [
+        {
+          "command": "domino.createWorkspace",
+          "when": "domino:authenticated"
+        },
         {
           "command": "domino.toggleAutoRefresh",
           "when": "domino:authenticated"

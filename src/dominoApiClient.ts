@@ -681,6 +681,73 @@ export class DominoApiClient {
         }
     }
 
+    async getAvailableToolsForEnvironment(environmentId: string): Promise<any[]> {
+        if (!this.httpClient || !this.currentProjectId) {
+            throw new Error('Not authenticated or no project selected');
+        }
+
+        try {
+            const endpoint = `/workspaces/project/${this.currentProjectId}/environment/${environmentId}/availableTools`;
+            console.log(`Getting available tools from: ${endpoint}`);
+
+            const response = await this.httpClient.get(endpoint);
+            console.log('Available tools response:', response.data);
+
+            if (response.data && response.data.workspaceTools) {
+                return response.data.workspaceTools.map((tool: any) => ({
+                    id: tool.id,
+                    name: tool.name,
+                    title: tool.title,
+                    iconUrl: tool.iconUrl || null
+                }));
+            }
+            return [];
+        } catch (error) {
+            const axiosError = error as AxiosError;
+            console.error('Get available tools error:', axiosError.response?.data || axiosError.message);
+            throw error;
+        }
+    }
+
+    async createWorkspace(
+        name: string,
+        environmentId: string,
+        hardwareTierId: string,
+        tools: string[]
+    ): Promise<any> {
+        if (!this.httpClient || !this.currentProjectId) {
+            throw new Error('Not authenticated or no project selected');
+        }
+
+        try {
+            const endpoint = `/workspace/project/${this.currentProjectId}/workspace`;
+            console.log(`Creating workspace at: ${endpoint}`);
+
+            const requestBody = {
+                name: name,
+                environmentId: environmentId,
+                hardwareTierId: { value: hardwareTierId },
+                tools: tools,
+                externalVolumeMounts: []
+            };
+
+            console.log('Create workspace payload:', JSON.stringify(requestBody, null, 2));
+
+            const response = await this.httpClient.post(endpoint, requestBody);
+            console.log('Create workspace response:', response.data);
+            return response.data;
+        } catch (error) {
+            const axiosError = error as AxiosError;
+            console.error('Create workspace error:', {
+                status: axiosError.response?.status,
+                statusText: axiosError.response?.statusText,
+                data: axiosError.response?.data,
+                message: axiosError.message
+            });
+            throw error;
+        }
+    }
+
     async syncFiles(localPath: string): Promise<void> {
         if (!this.httpClient || !this.currentProjectId) {
             throw new Error('Not authenticated or no project selected');

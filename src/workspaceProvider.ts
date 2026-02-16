@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { DominoApiClient } from './dominoApiClient';
 
 // Union type for workspace tree items
-type WorkspaceTreeItem = WorkspaceItem | WorkspaceHeaderItem;
+type WorkspaceTreeItem = WorkspaceItem | WorkspaceHeaderItem | WorkspaceActionItem;
 
 export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<WorkspaceTreeItem | undefined | null | void> = new vscode.EventEmitter<WorkspaceTreeItem | undefined | null | void>();
@@ -40,7 +40,12 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeI
             if (!workspaces || workspaces.length === 0) {
                 console.log('WorkspaceProvider: No workspaces found');
                 items.push(new WorkspaceHeaderItem('📋 No workspaces found', 'no-workspaces'));
-                items.push(new WorkspaceHeaderItem('💡 Create a workspace in Domino to see it here', 'help-text'));
+                items.push(new WorkspaceActionItem(
+                    '➕ Create New Workspace',
+                    'create-workspace',
+                    'Create and start a new workspace in this project',
+                    'add'
+                ));
                 return items;
             }
 
@@ -57,6 +62,14 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeI
             }
             
             items.push(new WorkspaceHeaderItem(summaryText, 'workspaces-summary'));
+
+            // Add "Create New Workspace" action button
+            items.push(new WorkspaceActionItem(
+                '➕ Create New Workspace',
+                'create-workspace',
+                'Create and start a new workspace in this project',
+                'add'
+            ));
 
             const workspaceItems = workspaces.map(workspace => {
                 console.log('WorkspaceProvider: Processing workspace:', {
@@ -229,5 +242,26 @@ class WorkspaceHeaderItem extends vscode.TreeItem {
         
         // Make it look like a header (no command, not clickable)
         this.command = undefined;
+    }
+}
+
+// Action item for creating new workspaces
+class WorkspaceActionItem extends vscode.TreeItem {
+    constructor(
+        public readonly label: string,
+        public readonly actionId: string,
+        public readonly actionDescription: string,
+        public readonly iconName: string
+    ) {
+        super(label, vscode.TreeItemCollapsibleState.None);
+        this.description = '';
+        this.tooltip = new vscode.MarkdownString(`**${actionDescription}**\n\n*Click to start creating a new workspace*`);
+        this.contextValue = 'workspaceAction';
+        this.iconPath = new vscode.ThemeIcon(iconName, new vscode.ThemeColor('button.background'));
+        this.command = {
+            command: 'domino.createWorkspace',
+            title: 'Create New Workspace',
+            arguments: []
+        };
     }
 }

@@ -812,6 +812,203 @@ async function commitWorkspace(workspaceItem?: any) {
     }
 }
 
+async function createNewWorkspace() {
+    try {
+        // Step 1: Validate project selected
+        if (!dominoClient.currentProjectId) {
+            vscode.window.showWarningMessage('Please select a project first.');
+            return;
+        }
+
+        // Step 2: Enter workspace name
+        const workspaceName = await vscode.window.showInputBox({
+            prompt: 'Enter a name for the new workspace',
+            placeHolder: 'My Workspace',
+            validateInput: (value: string) => {
+                if (!value || value.trim().length === 0) {
+                    return 'Workspace name is required';
+                }
+                return null;
+            }
+        });
+
+        if (!workspaceName) {
+            return;
+        }
+
+        // Step 3: Load environments + hardware tiers in parallel
+        const configOptions = await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Loading configuration options...',
+            cancellable: false
+        }, async () => {
+            try {
+                const [hardwareTiers, environments, projectSettings] = await Promise.all([
+                    dominoClient.getHardwareTiers().catch(error => {
+                        console.warn('Failed to get hardware tiers:', error);
+                        return [];
+                    }),
+                    dominoClient.getEnvironments().catch(error => {
+                        console.warn('Failed to get environments:', error);
+                        return [];
+                    }),
+                    dominoClient.getProjectSettings().catch(error => {
+                        console.warn('Failed to get project settings:', error);
+                        return null;
+                    })
+                ]);
+                return { hardwareTiers, environments, projectSettings };
+            } catch (error) {
+                console.warn('Could not load configuration options:', error);
+                return { hardwareTiers: [], environments: [], projectSettings: null };
+            }
+        });
+
+        // Step 4: Select environment (required)
+        if (configOptions.environments.length === 0) {
+            vscode.window.showErrorMessage('No environments available. Cannot create workspace.');
+            return;
+        }
+
+        const environmentOptions = configOptions.environments.map((env: any) => {
+            const details = [];
+            if (env.version && env.version !== 'N/A') { details.push(`v${env.version}`); }
+            if (env.visibility) { details.push(env.visibility); }
+            if (env.isCurated) { details.push('Curated'); }
+            return {
+                label: `${env.name}${env.isDefault ? ' (default)' : ''}`,
+                description: details.length > 0 ? details.join(', ') : env.description || '',
+                detail: `ID: ${env.id}`,
+                value: env.id
+            };
+        });
+
+        const defaultEnvIndex = environmentOptions.findIndex((option: any) =>
+            configOptions.environments.find((env: any) => env.id === option.value && env.isDefault)
+        );
+
+        const selectedEnv = await vscode.window.showQuickPick(environmentOptions, {
+            placeHolder: 'Select compute environment for the workspace',
+            canPickMany: false,
+            ...(defaultEnvIndex >= 0 && { activeItem: environmentOptions[defaultEnvIndex] })
+        });
+
+        if (!selectedEnv) {
+            return;
+        }
+
+        // Step 5: Load available tools for selected environment
+        const tools = await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Loading available IDEs/tools...',
+            cancellable: false
+        }, async () => {
+            try {
+                return await dominoClient.getAvailableToolsForEnvironment(selectedEnv.value);
+            } catch (error) {
+                console.warn('Failed to get available tools:', error);
+                return [];
+            }
+        });
+
+        // Step 6: Select IDE/tool(s)
+        if (tools.length === 0) {
+            vscode.window.showErrorMessage('No tools/IDEs available for the selected environment.');
+            return;
+        }
+
+        const toolOptions = tools.map((tool: any) => ({
+            label: tool.title || tool.name,
+            description: tool.name,
+            detail: `Tool ID: ${tool.id}`,
+            value: tool.name
+        }));
+
+        const selectedTool = await vscode.window.showQuickPick(toolOptions, {
+            placeHolder: 'Select IDE for the workspace',
+            canPickMany: false
+        });
+
+        if (!selectedTool) {
+            return;
+        }
+
+        const selectedTools = [selectedTool];
+
+        // Step 7: Select hardware tier (required)
+        if (configOptions.hardwareTiers.length === 0) {
+            vscode.window.showErrorMessage('No hardware tiers available. Cannot create workspace.');
+            return;
+        }
+
+        const hardwareTierOptions = configOptions.hardwareTiers.map((tier: any) => {
+            const details = [];
+            if (tier.cpu !== 'N/A') { details.push(`${tier.cpu} CPU${tier.cpu !== '1' ? 's' : ''}`); }
+            if (tier.memory !== 'N/A') { details.push(`${tier.memory} ${tier.memoryUnit || 'GiB'} RAM`); }
+            if (tier.gpus && tier.gpus > 0) { details.push(`${tier.gpus} GPU${tier.gpus !== 1 ? 's' : ''}`); }
+            const isDefault = tier.id === configOptions.projectSettings?.defaultHardwareTierId;
+            return {
+                label: `${tier.name}${isDefault ? ' (default)' : ''}`,
+                description: details.length > 0 ? details.join(', ') : tier.description || '',
+                detail: `ID: ${tier.id}`,
+                value: tier.id
+            };
+        });
+
+        const defaultTierIndex = hardwareTierOptions.findIndex((option: any) =>
+            option.value === configOptions.projectSettings?.defaultHardwareTierId
+        );
+
+        const selectedTier = await vscode.window.showQuickPick(hardwareTierOptions, {
+            placeHolder: 'Select hardware tier for the workspace',
+            canPickMany: false,
+            ...(defaultTierIndex >= 0 && { activeItem: hardwareTierOptions[defaultTierIndex] })
+        });
+
+        if (!selectedTier) {
+            return;
+        }
+
+        // Step 8: Create workspace
+        const workspace = await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Creating workspace...',
+            cancellable: false
+        }, async () => {
+            return await dominoClient.createWorkspace(
+                workspaceName.trim(),
+                selectedEnv.value,
+                selectedTier.value,
+                selectedTools.map((t: any) => t.value)
+            );
+        });
+
+        // Step 9: Show success with action buttons
+        const toolNames = selectedTools.map((t: any) => t.label).join(', ');
+        const message = `Workspace "${workspaceName}" created with ${toolNames}!`;
+        vscode.window.showInformationMessage(message, 'View Workspaces', 'Open in Domino')
+            .then((selection: string | undefined) => {
+                if (selection === 'View Workspaces') {
+                    workspaceProvider.refresh();
+                    vscode.commands.executeCommand('dominoWorkspaces.focus');
+                } else if (selection === 'Open in Domino') {
+                    const config = vscode.workspace.getConfiguration('domino');
+                    const apiUrl = config.get<string>('apiUrl');
+                    if (apiUrl && workspace?.id) {
+                        const wsUrl = `${apiUrl}/workspace/${dominoClient.currentProjectId}/workspace/${workspace.id}`;
+                        vscode.env.openExternal(vscode.Uri.parse(wsUrl));
+                    }
+                }
+            });
+
+        workspaceProvider.refresh();
+
+    } catch (error) {
+        console.error('Create workspace error:', error);
+        vscode.window.showErrorMessage(`Failed to create workspace: ${error}`);
+    }
+}
+
 async function openJobInBrowser(jobItem?: any) {
     try {
         console.log('Opening job in browser with item:', jobItem);
@@ -1045,6 +1242,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('domino.stopWorkspace', stopWorkspace),
         vscode.commands.registerCommand('domino.openWorkspace', openWorkspace),
         vscode.commands.registerCommand('domino.commitWorkspace', commitWorkspace),
+        vscode.commands.registerCommand('domino.createWorkspace', createNewWorkspace),
         vscode.commands.registerCommand('domino.openJobInBrowser', openJobInBrowser),
         vscode.commands.registerCommand('domino.refreshProjects', () => projectProvider.refresh()),
         vscode.commands.registerCommand('domino.refreshJobs', () => jobProvider.refresh()),
