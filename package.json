@@ -25,12 +25,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/dominodatalab/vscode-extension.git"
+    "url": "https://github.com/dominodatalab/domino-vscode.git"
   },
   "bugs": {
-    "url": "https://github.com/dominodatalab/vscode-extension/issues"
+    "url": "https://github.com/dominodatalab/domino-vscode/issues"
   },
-  "homepage": "https://github.com/dominodatalab/vscode-extension/blob/main/README.md",
+  "homepage": "https://github.com/dominodatalab/domino-vscode/blob/main/README.md",
   "license": "Apache2",
   "main": "./out/extension.js",
   "activationEvents": [],

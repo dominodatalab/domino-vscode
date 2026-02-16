@@ -381,13 +381,16 @@ async function authenticate() {
         }
 
         await dominoClient.authenticate(apiUrl, apiKey);
-        
+
         // Set context for views
         vscode.commands.executeCommand('setContext', 'domino:authenticated', true);
-        
+
         // Update configuration
         const config = vscode.workspace.getConfiguration('domino');
         await config.update('apiUrl', apiUrl, vscode.ConfigurationTarget.Global);
+
+        // Persist API key securely in OS keychain
+        await secretStorage.store('domino.apiKey', apiKey);
 
         vscode.window.showInformationMessage('Successfully authenticated with Domino!');
         
@@ -1518,13 +1521,32 @@ function generateJobsWebview(jobs: any[], total?: number, hasMore?: boolean): st
 async function checkAuthentication() {
     const config = vscode.workspace.getConfiguration('domino');
     const apiUrl = config.get<string>('apiUrl');
-    
+
     // Load auto-refresh preference from configuration
     const autoRefreshEnabled = config.get<boolean>('autoRefreshEnabled', true);
     isAutoRefreshEnabled = autoRefreshEnabled;
-    
-    // API key is stored in memory only, so we're never authenticated on startup.
-    // Always start unauthenticated and let the user re-authenticate.
+
+    // Try to restore saved credentials from OS keychain
+    if (apiUrl) {
+        const savedApiKey = await secretStorage.get('domino.apiKey');
+        if (savedApiKey) {
+            try {
+                await dominoClient.authenticate(apiUrl, savedApiKey);
+                vscode.commands.executeCommand('setContext', 'domino:authenticated', true);
+                console.log('Auto-authenticated with saved credentials');
+
+                projectProvider.refresh();
+                jobProvider.refresh();
+                workspaceProvider.refresh();
+                startAutoRefresh();
+                return;
+            } catch (error) {
+                console.log('Saved credentials are invalid, clearing:', error);
+                await secretStorage.delete('domino.apiKey');
+            }
+        }
+    }
+
     vscode.commands.executeCommand('setContext', 'domino:authenticated', false);
 }
 
@@ -1547,6 +1569,7 @@ let dominoClient: DominoApiClient;
 let projectProvider: ProjectProvider;
 let jobProvider: JobProvider;
 let workspaceProvider: WorkspaceProvider;
+let secretStorage: vscode.SecretStorage;
 
 // Auto-refresh functionality
 let autoRefreshTimer: NodeJS.Timeout | undefined;
@@ -1563,6 +1586,9 @@ export function activate(context: vscode.ExtensionContext) {
     // Check if we're in a remote workspace
     const isRemote = vscode.env.remoteName !== undefined;
     console.log('Remote workspace detected:', isRemote, 'Remote name:', vscode.env.remoteName);
+
+    // Store secret storage for credential persistence
+    secretStorage = context.secrets;
 
     // Initialize providers
     dominoClient = new DominoApiClient();
