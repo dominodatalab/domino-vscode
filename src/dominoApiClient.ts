@@ -750,7 +750,8 @@ export class DominoApiClient {
                 environmentId: environmentId,
                 hardwareTierId: { value: hardwareTierId },
                 tools: tools,
-                externalVolumeMounts: []
+                externalVolumeMounts: [],
+                ssh: { enabled: true }
             };
 
             console.log('Create workspace payload:', JSON.stringify(requestBody, null, 2));

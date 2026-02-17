@@ -47,8 +47,8 @@ export class JobProvider implements vscode.TreeDataProvider<JobTreeItem> {
             if (!this.dominoClient.currentProjectId) {
                 console.log('No project selected for jobs');
                 return [
-                    new JobHeaderItem('🎯 Select a project to view jobs', 'project-needed'),
-                    new JobActionItem('▶️ Start New Job', 'start-job', 'Start a new job in this project', 'play')
+                    new JobHeaderItem('Select a project to view jobs', 'project-needed'),
+                    new JobActionItem('Start New Job', 'start-job', 'Start a new job in this project', 'play')
                 ];
             }
 
@@ -85,12 +85,12 @@ export class JobProvider implements vscode.TreeDataProvider<JobTreeItem> {
                 const headerText = `📊 ${this.total} job${this.total === 1 ? '' : 's'} • ${this.jobs.length} loaded`;
                 items.push(new JobHeaderItem(headerText, 'jobs-summary'));
             } else {
-                items.push(new JobHeaderItem('📋 No jobs found', 'no-jobs'));
+                items.push(new JobHeaderItem('No jobs found', 'no-jobs'));
             }
             
             // Add "Start New Job" action button
             items.push(new JobActionItem(
-                '▶️ Start New Job', 
+                'Start New Job',
                 'start-job', 
                 'Create and run a new job in this project', 
                 'play'
@@ -189,9 +189,9 @@ export class JobProvider implements vscode.TreeDataProvider<JobTreeItem> {
         } catch (error) {
             console.error('JobProvider error:', error);
             return [
-                new JobHeaderItem('❌ Error loading jobs', 'error'),
-                new JobActionItem('▶️ Start New Job', 'start-job', 'Start a new job in this project', 'play'),
-                new JobHeaderItem('🔄 Try refreshing the view', 'help-text')
+                new JobHeaderItem('Error loading jobs', 'error'),
+                new JobActionItem('Start New Job', 'start-job', 'Start a new job in this project', 'play'),
+                new JobHeaderItem('Try refreshing the view', 'help-text')
             ];
         }
     }
@@ -212,20 +212,18 @@ class JobItem extends vscode.TreeItem {
     ) {
         super(label, collapsibleState);
         
-        // Create a clean, professional description with status indicator
-        const statusIndicator = this.getStatusIndicator(status);
-        this.description = `${statusIndicator} ${displayCommand} • ${timeAgo}`;
-        
+        this.description = `${displayCommand} • ${timeAgo}`;
+
         // Rich tooltip with all details
         this.tooltip = new vscode.MarkdownString(`
 **${label}**
 
-${statusIndicator} **Status:** ${status}  
-📋 **Command:** \`${jobCommand}\`  
-📅 **Date:** ${fullDate}  
-👤 **Started by:** ${username}  
-🆔 **Job ID:** \`${jobId}\`  
-${jobNumber ? `🔢 **Job Number:** ${jobNumber}` : ''}
+**Status:** ${status}
+**Command:** \`${jobCommand}\`
+**Date:** ${fullDate}
+**Started by:** ${username}
+**Job ID:** \`${jobId}\`
+${jobNumber ? `**Job Number:** ${jobNumber}` : ''}
 
 *Click to view in Domino*
         `);
@@ -261,22 +259,6 @@ ${jobNumber ? `🔢 **Job Number:** ${jobNumber}` : ''}
         };
     }
     
-    private getStatusIndicator(status: string): string {
-        switch (status.toLowerCase()) {
-            case 'running':
-                return '🔄';
-            case 'succeeded':
-                return '✅';
-            case 'failed':
-                return '❌';
-            case 'queued':
-                return '⏳';
-            case 'stopped':
-                return '⏹️';
-            default:
-                return '⚪';
-        }
-    }
 }
 
 // Header item for the jobs list
