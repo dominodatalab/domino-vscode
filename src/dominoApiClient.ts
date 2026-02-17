@@ -18,6 +18,10 @@ export class DominoApiClient {
             return this._apiUrl;
         }
     }
+
+    get isAuthenticated(): boolean {
+        return this.httpClient !== null && this.accessToken !== '';
+    }
     private accessToken: string = '';
     public currentProjectId: string | null = null;
     public currentProjectName: string | null = null;
@@ -32,23 +36,24 @@ export class DominoApiClient {
 
         this.httpClient = axios.create({
             baseURL: `${this._apiUrl}/${this.apiVersion}`,
-            headers: {
-                'Authorization': `Bearer ${this.accessToken}`,
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             timeout: 30000
+        });
+
+        // Inject the current token on every request so that background token
+        // refreshes are picked up immediately without recreating the client.
+        this.httpClient.interceptors.request.use((config) => {
+            config.headers['Authorization'] = `Bearer ${this.accessToken}`;
+            return config;
         });
 
         // Test authentication
         await this.getProjects();
     }
 
-    /** Update the Bearer token without re-initialising the client (used by token refresh). */
+    /** Update the Bearer token (used by background token refresh). */
     updateAccessToken(accessToken: string): void {
         this.accessToken = accessToken;
-        if (this.httpClient) {
-            this.httpClient.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
-        }
     }
 
     /** Reset all auth state (used on sign-out). */

@@ -1755,16 +1755,22 @@ function scheduleTokenRefresh(tokens: TokenSet): void {
     // Refresh at 80% of the token lifetime, with a 30-second minimum floor
     const refreshIn = Math.max(timeUntilExpiry * 0.8, 30_000);
 
+    const expiresAt = new Date(tokens.expiresAt).toLocaleTimeString();
+    const refreshAt = new Date(Date.now() + refreshIn).toLocaleTimeString();
+    console.log(`[Domino auth] Token expires at ${expiresAt}. Refresh scheduled in ${Math.round(refreshIn / 1000)}s (at ${refreshAt}).`);
+
     tokenRefreshTimer = setTimeout(async () => {
+        console.log('[Domino auth] Starting background token refresh...');
         try {
             const config = vscode.workspace.getConfiguration('domino');
             const clientId = config.get<string>('oauthClientId', 'domino-connect-client');
             const newTokens = await refreshAccessToken(tokens, clientId);
             await storeTokens(secretStorage, newTokens);
             dominoClient.updateAccessToken(newTokens.accessToken);
+            console.log(`[Domino auth] Token refreshed successfully. New token expires at ${new Date(newTokens.expiresAt).toLocaleTimeString()}.`);
             scheduleTokenRefresh(newTokens);
         } catch (error) {
-            console.error('Background token refresh failed:', error);
+            console.error('[Domino auth] Background token refresh failed:', error);
             await clearTokens(secretStorage);
             stopAutoRefresh();
             vscode.commands.executeCommand('setContext', 'domino:authenticated', false);

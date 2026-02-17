@@ -40,6 +40,10 @@ export class JobProvider implements vscode.TreeDataProvider<JobTreeItem> {
 
     async getChildren(element?: JobTreeItem): Promise<JobTreeItem[]> {
         try {
+            if (!this.dominoClient.isAuthenticated) {
+                return [];
+            }
+
             if (!this.dominoClient.currentProjectId) {
                 console.log('No project selected for jobs');
                 return [

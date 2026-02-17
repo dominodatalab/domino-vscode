@@ -27,6 +27,10 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeI
 
     async getChildren(element?: WorkspaceTreeItem): Promise<WorkspaceTreeItem[]> {
         try {
+            if (!this.dominoClient.isAuthenticated) {
+                return [];
+            }
+
             if (!this.dominoClient.currentProjectId) {
                 console.log('WorkspaceProvider: No project selected');
                 return [

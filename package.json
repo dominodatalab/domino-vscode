@@ -59,7 +59,8 @@
       {
         "command": "domino.signOut",
         "title": "Sign Out of Domino",
-        "category": "Domino"
+        "category": "Domino",
+        "icon": "$(sign-out)"
       },
       {
         "command": "domino.selectProject",
@@ -216,6 +217,11 @@
         {
           "command": "domino.refreshProjects",
           "when": "view == dominoProjects",
+          "group": "navigation"
+        },
+        {
+          "command": "domino.signOut",
+          "when": "view == dominoProjects && domino:authenticated",
           "group": "navigation"
         },
         {
