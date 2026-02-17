@@ -3,7 +3,7 @@
   "displayName": "Domino Data Lab ",
   "description": "VS Code extension for interacting with Domino Data Lab platform",
   "version": "1.0.0",
-  "publisher": "Domino Data Lab",
+  "publisher": "dominodatalab",
   "icon": "icons/domino-logo-black.png",
   "author": {
     "name": "Blake Moore"
@@ -53,7 +53,12 @@
       },
       {
         "command": "domino.authenticate",
-        "title": "Authenticate with Domino",
+        "title": "Sign In to Domino",
+        "category": "Domino"
+      },
+      {
+        "command": "domino.signOut",
+        "title": "Sign Out of Domino",
         "category": "Domino"
       },
       {
@@ -183,17 +188,17 @@
     "viewsWelcome": [
       {
         "view": "dominoProjects",
-        "contents": "You need to authenticate with Domino Data Lab to view your projects.\n[Authenticate](command:domino.authenticate)",
+        "contents": "Sign in to Domino Data Lab to view your projects.\n[Sign In](command:domino.authenticate)",
         "when": "!domino:authenticated"
       },
       {
         "view": "dominoJobs",
-        "contents": "Authenticate with Domino to view your jobs.\n[Authenticate](command:domino.authenticate)",
+        "contents": "Sign in to Domino to view your jobs.\n[Sign In](command:domino.authenticate)",
         "when": "!domino:authenticated"
       },
       {
         "view": "dominoWorkspaces",
-        "contents": "Authenticate with Domino to view your workspaces.\n[Authenticate](command:domino.authenticate)",
+        "contents": "Sign in to Domino to view your workspaces.\n[Sign In](command:domino.authenticate)",
         "when": "!domino:authenticated"
       }
     ],
@@ -349,6 +354,10 @@
         {
           "command": "domino.disconnectSSH",
           "when": "domino:authenticated"
+        },
+        {
+          "command": "domino.signOut",
+          "when": "domino:authenticated"
         }
       ],
       "explorer/context": [
@@ -395,7 +404,12 @@
         "domino.apiUrl": {
           "type": "string",
           "default": "",
-          "description": "Domino API URL (e.g., https://your-domino-instance.com)"
+          "description": "Domino URL (e.g., https://your-domino-instance.com). When set, users skip the URL prompt during sign-in."
+        },
+        "domino.oauthClientId": {
+          "type": "string",
+          "default": "domino-connect-client",
+          "description": "Keycloak OAuth2 client ID configured for this VS Code extension. Contact your Domino administrator if the default does not work."
         },
         "domino.autoRefreshEnabled": {
           "type": "boolean",
