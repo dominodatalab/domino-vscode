@@ -3,12 +3,20 @@ import * as child_process from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import * as http from 'http';
 import * as net from 'net';
 import { DominoApiClient } from './dominoApiClient';
 import { ProjectProvider } from './projectProvider';
 import { JobProvider } from './jobProvider';
 import { WorkspaceProvider } from './workspaceProvider';
+import {
+    TokenSet,
+    performOAuthFlow,
+    refreshAccessToken,
+    revokeTokens,
+    storeTokens,
+    loadTokens,
+    clearTokens,
+} from './auth';
 
 // SSH tunnel tracking
 interface SshTunnel {
@@ -362,48 +370,79 @@ async function disableAutoRefresh() {
 
 async function authenticate() {
     try {
-        const apiUrl = await vscode.window.showInputBox({
-            prompt: 'Enter your Domino API URL',
-            placeHolder: 'https://your-domino-instance.com'
-        });
-
-        if (!apiUrl) {
-            return;
-        }
-
-        const apiKey = await vscode.window.showInputBox({
-            prompt: 'Enter your Domino API Key',
-            password: true
-        });
-
-        if (!apiKey) {
-            return;
-        }
-
-        await dominoClient.authenticate(apiUrl, apiKey);
-
-        // Set context for views
-        vscode.commands.executeCommand('setContext', 'domino:authenticated', true);
-
-        // Update configuration
         const config = vscode.workspace.getConfiguration('domino');
-        await config.update('apiUrl', apiUrl, vscode.ConfigurationTarget.Global);
+        let apiUrl = (config.get<string>('apiUrl') || '').trim().replace(/\/$/, '');
+        const clientId = config.get<string>('oauthClientId', 'domino-connect-client');
 
-        // Persist API key securely in OS keychain
-        await secretStorage.store('domino.apiKey', apiKey);
+        // If no URL is pre-configured, prompt the user once
+        if (!apiUrl) {
+            const entered = await vscode.window.showInputBox({
+                prompt: 'Enter your Domino URL',
+                placeHolder: 'https://your-domino-instance.com',
+                validateInput: (value) => {
+                    if (!value || !value.startsWith('https://')) {
+                        return 'Please enter a valid HTTPS URL';
+                    }
+                    return null;
+                }
+            });
+            if (!entered) {
+                return;
+            }
+            apiUrl = entered.trim().replace(/\/$/, '');
+            await config.update('apiUrl', apiUrl, vscode.ConfigurationTarget.Global);
+        }
 
+        const tokens = await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Opening browser for Domino authentication...',
+            cancellable: false,
+        }, () => performOAuthFlow(apiUrl, clientId));
+
+        await storeTokens(secretStorage, tokens);
+        await dominoClient.authenticate(apiUrl, tokens.accessToken);
+        scheduleTokenRefresh(tokens);
+
+        vscode.commands.executeCommand('setContext', 'domino:authenticated', true);
         vscode.window.showInformationMessage('Successfully authenticated with Domino!');
-        
-        // Refresh views
+
         projectProvider.refresh();
         jobProvider.refresh();
         workspaceProvider.refresh();
-
-        // Start auto-refresh after successful authentication
         startAutoRefresh();
 
     } catch (error) {
         vscode.window.showErrorMessage(`Authentication failed: ${error}`);
+    }
+}
+
+async function signOut() {
+    try {
+        if (tokenRefreshTimer) {
+            clearTimeout(tokenRefreshTimer);
+            tokenRefreshTimer = undefined;
+        }
+
+        const tokens = await loadTokens(secretStorage);
+        if (tokens) {
+            const config = vscode.workspace.getConfiguration('domino');
+            const clientId = config.get<string>('oauthClientId', 'domino-connect-client');
+            await revokeTokens(tokens, clientId);
+        }
+
+        await clearTokens(secretStorage);
+        dominoClient.clearAuth();
+        stopAutoRefresh();
+
+        vscode.commands.executeCommand('setContext', 'domino:authenticated', false);
+
+        projectProvider.refresh();
+        jobProvider.refresh();
+        workspaceProvider.refresh();
+
+        vscode.window.showInformationMessage('Signed out of Domino.');
+    } catch (error) {
+        vscode.window.showErrorMessage(`Sign out failed: ${error}`);
     }
 }
 
@@ -1520,34 +1559,48 @@ function generateJobsWebview(jobs: any[], total?: number, hasMore?: boolean): st
 
 async function checkAuthentication() {
     const config = vscode.workspace.getConfiguration('domino');
-    const apiUrl = config.get<string>('apiUrl');
-
-    // Load auto-refresh preference from configuration
     const autoRefreshEnabled = config.get<boolean>('autoRefreshEnabled', true);
     isAutoRefreshEnabled = autoRefreshEnabled;
 
-    // Try to restore saved credentials from OS keychain
-    if (apiUrl) {
-        const savedApiKey = await secretStorage.get('domino.apiKey');
-        if (savedApiKey) {
-            try {
-                await dominoClient.authenticate(apiUrl, savedApiKey);
-                vscode.commands.executeCommand('setContext', 'domino:authenticated', true);
-                console.log('Auto-authenticated with saved credentials');
+    const tokens = await loadTokens(secretStorage);
+    if (!tokens) {
+        vscode.commands.executeCommand('setContext', 'domino:authenticated', false);
+        return;
+    }
 
-                projectProvider.refresh();
-                jobProvider.refresh();
-                workspaceProvider.refresh();
-                startAutoRefresh();
-                return;
-            } catch (error) {
-                console.log('Saved credentials are invalid, clearing:', error);
-                await secretStorage.delete('domino.apiKey');
-            }
+    const clientId = config.get<string>('oauthClientId', 'domino-connect-client');
+
+    // If the access token has expired, attempt a silent refresh before restoring the session
+    let activeTokens = tokens;
+    if (tokens.expiresAt <= Date.now()) {
+        try {
+            activeTokens = await refreshAccessToken(tokens, clientId);
+            await storeTokens(secretStorage, activeTokens);
+        } catch (error) {
+            console.log('Stored tokens expired and refresh failed — clearing:', error);
+            await clearTokens(secretStorage);
+            vscode.commands.executeCommand('setContext', 'domino:authenticated', false);
+            return;
         }
     }
 
-    vscode.commands.executeCommand('setContext', 'domino:authenticated', false);
+    try {
+        await dominoClient.authenticate(activeTokens.dominoBaseUrl, activeTokens.accessToken);
+    } catch (error) {
+        console.log('Stored tokens are invalid — clearing:', error);
+        await clearTokens(secretStorage);
+        vscode.commands.executeCommand('setContext', 'domino:authenticated', false);
+        return;
+    }
+
+    scheduleTokenRefresh(activeTokens);
+    vscode.commands.executeCommand('setContext', 'domino:authenticated', true);
+    console.log('Auto-authenticated with stored OAuth tokens');
+
+    projectProvider.refresh();
+    jobProvider.refresh();
+    workspaceProvider.refresh();
+    startAutoRefresh();
 }
 
 export function deactivate() {
@@ -1555,6 +1608,12 @@ export function deactivate() {
     if (autoRefreshTimer) {
         clearInterval(autoRefreshTimer);
         autoRefreshTimer = undefined;
+    }
+
+    // Clean up OAuth token refresh timer
+    if (tokenRefreshTimer) {
+        clearTimeout(tokenRefreshTimer);
+        tokenRefreshTimer = undefined;
     }
 
     // Clean up SSH tunnels
@@ -1575,6 +1634,9 @@ let secretStorage: vscode.SecretStorage;
 let autoRefreshTimer: NodeJS.Timeout | undefined;
 let isAutoRefreshEnabled: boolean = true;
 const AUTO_REFRESH_INTERVAL = 30000; // 30 seconds
+
+// OAuth token refresh timer
+let tokenRefreshTimer: NodeJS.Timeout | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Domino Data Lab extension is now active!');
@@ -1628,7 +1690,9 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('domino.runJobWithFile', runJobWithFile),
         // SSH tunnel commands
         vscode.commands.registerCommand('domino.connectSSH', connectSSH),
-        vscode.commands.registerCommand('domino.disconnectSSH', disconnectSSH)
+        vscode.commands.registerCommand('domino.disconnectSSH', disconnectSSH),
+        // Auth commands
+        vscode.commands.registerCommand('domino.signOut', signOut),
     ];
 
     context.subscriptions.push(...commands);
@@ -1639,6 +1703,10 @@ export function activate(context: vscode.ExtensionContext) {
             if (autoRefreshTimer) {
                 clearInterval(autoRefreshTimer);
                 autoRefreshTimer = undefined;
+            }
+            if (tokenRefreshTimer) {
+                clearTimeout(tokenRefreshTimer);
+                tokenRefreshTimer = undefined;
             }
         }
     });
@@ -1675,8 +1743,46 @@ export function activate(context: vscode.ExtensionContext) {
     checkAuthentication();
 }
 
-// Auto-refresh functions
+// Token refresh scheduling
 
+function scheduleTokenRefresh(tokens: TokenSet): void {
+    if (tokenRefreshTimer) {
+        clearTimeout(tokenRefreshTimer);
+        tokenRefreshTimer = undefined;
+    }
+
+    const timeUntilExpiry = tokens.expiresAt - Date.now();
+    // Refresh at 80% of the token lifetime, with a 30-second minimum floor
+    const refreshIn = Math.max(timeUntilExpiry * 0.8, 30_000);
+
+    const expiresAt = new Date(tokens.expiresAt).toLocaleTimeString();
+    const refreshAt = new Date(Date.now() + refreshIn).toLocaleTimeString();
+    console.log(`[Domino auth] Token expires at ${expiresAt}. Refresh scheduled in ${Math.round(refreshIn / 1000)}s (at ${refreshAt}).`);
+
+    tokenRefreshTimer = setTimeout(async () => {
+        console.log('[Domino auth] Starting background token refresh...');
+        try {
+            const config = vscode.workspace.getConfiguration('domino');
+            const clientId = config.get<string>('oauthClientId', 'domino-connect-client');
+            const newTokens = await refreshAccessToken(tokens, clientId);
+            await storeTokens(secretStorage, newTokens);
+            dominoClient.updateAccessToken(newTokens.accessToken);
+            console.log(`[Domino auth] Token refreshed successfully. New token expires at ${new Date(newTokens.expiresAt).toLocaleTimeString()}.`);
+            scheduleTokenRefresh(newTokens);
+        } catch (error) {
+            console.error('[Domino auth] Background token refresh failed:', error);
+            await clearTokens(secretStorage);
+            stopAutoRefresh();
+            vscode.commands.executeCommand('setContext', 'domino:authenticated', false);
+            vscode.window.showWarningMessage(
+                'Your Domino session has expired. Please sign in again.',
+                'Sign In'
+            ).then(action => {
+                if (action === 'Sign In') { authenticate(); }
+            });
+        }
+    }, refreshIn);
+}
 
 // Auto-refresh functions
 function startAutoRefresh() {

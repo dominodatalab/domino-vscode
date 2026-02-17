@@ -18,29 +18,51 @@ export class DominoApiClient {
             return this._apiUrl;
         }
     }
-    private apiKey: string = '';
+
+    get isAuthenticated(): boolean {
+        return this.httpClient !== null && this.accessToken !== '';
+    }
+    private accessToken: string = '';
     public currentProjectId: string | null = null;
     public currentProjectName: string | null = null;
     private apiVersion: string = 'v4'; // Default, but will be detected
 
-    async authenticate(apiUrl: string, apiKey: string): Promise<void> {
+    async authenticate(apiUrl: string, accessToken: string): Promise<void> {
         this._apiUrl = apiUrl.replace(/\/$/, ''); // Remove trailing slash
-        this.apiKey = apiKey;
+        this.accessToken = accessToken;
 
         // Try to detect the correct API version
         await this.detectApiVersion();
 
         this.httpClient = axios.create({
             baseURL: `${this._apiUrl}/${this.apiVersion}`,
-            headers: {
-                'X-Domino-Api-Key': this.apiKey,
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             timeout: 30000
+        });
+
+        // Inject the current token on every request so that background token
+        // refreshes are picked up immediately without recreating the client.
+        this.httpClient.interceptors.request.use((config) => {
+            config.headers['Authorization'] = `Bearer ${this.accessToken}`;
+            return config;
         });
 
         // Test authentication
         await this.getProjects();
+    }
+
+    /** Update the Bearer token (used by background token refresh). */
+    updateAccessToken(accessToken: string): void {
+        this.accessToken = accessToken;
+    }
+
+    /** Reset all auth state (used on sign-out). */
+    clearAuth(): void {
+        this.httpClient = null;
+        this.accessToken = '';
+        this._apiUrl = '';
+        this.currentProjectId = null;
+        this.currentProjectName = null;
     }
 
     private async detectApiVersion(): Promise<void> {
@@ -51,7 +73,7 @@ export class DominoApiClient {
                 const testClient = axios.create({
                     baseURL: `${this._apiUrl}/${version}`,
                     headers: {
-                        'X-Domino-Api-Key': this.apiKey,
+                        'Authorization': `Bearer ${this.accessToken}`,
                         'Content-Type': 'application/json'
                     },
                     timeout: 10000
@@ -369,7 +391,7 @@ export class DominoApiClient {
             
             const response = await axios.post(directUrl, requestBody, {
                 headers: {
-                    'X-Domino-Api-Key': this.apiKey,
+                    'Authorization': `Bearer ${this.accessToken}`,
                     'Content-Type': 'application/json'
                 },
                 timeout: 30000
@@ -728,7 +750,8 @@ export class DominoApiClient {
                 environmentId: environmentId,
                 hardwareTierId: { value: hardwareTierId },
                 tools: tools,
-                externalVolumeMounts: []
+                externalVolumeMounts: [],
+                ssh: { enabled: true }
             };
 
             console.log('Create workspace payload:', JSON.stringify(requestBody, null, 2));

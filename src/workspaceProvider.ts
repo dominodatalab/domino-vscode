@@ -27,10 +27,14 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeI
 
     async getChildren(element?: WorkspaceTreeItem): Promise<WorkspaceTreeItem[]> {
         try {
+            if (!this.dominoClient.isAuthenticated) {
+                return [];
+            }
+
             if (!this.dominoClient.currentProjectId) {
                 console.log('WorkspaceProvider: No project selected');
                 return [
-                    new WorkspaceHeaderItem('🎯 Select a project to view workspaces', 'project-needed')
+                    new WorkspaceHeaderItem('Select a project to view workspaces', 'project-needed')
                 ];
             }
 
@@ -42,9 +46,9 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeI
             
             if (!workspaces || workspaces.length === 0) {
                 console.log('WorkspaceProvider: No workspaces found');
-                items.push(new WorkspaceHeaderItem('📋 No workspaces found', 'no-workspaces'));
+                items.push(new WorkspaceHeaderItem('No workspaces found', 'no-workspaces'));
                 items.push(new WorkspaceActionItem(
-                    '➕ Create New Workspace',
+                    'Create New Workspace',
                     'create-workspace',
                     'Create and start a new workspace in this project',
                     'add'
@@ -56,7 +60,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeI
             const runningCount = workspaces.filter(ws => ws.state?.toLowerCase() === 'started' || ws.state?.toLowerCase() === 'running').length;
             const stoppedCount = workspaces.length - runningCount;
             
-            let summaryText = `💻 ${workspaces.length} workspace${workspaces.length === 1 ? '' : 's'}`;
+            let summaryText = `${workspaces.length} workspace${workspaces.length === 1 ? '' : 's'}`;
             if (runningCount > 0) {
                 summaryText += ` • ${runningCount} running`;
             }
@@ -68,7 +72,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeI
 
             // Add "Create New Workspace" action button
             items.push(new WorkspaceActionItem(
-                '➕ Create New Workspace',
+                'Create New Workspace',
                 'create-workspace',
                 'Create and start a new workspace in this project',
                 'add'
@@ -118,8 +122,8 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeI
         } catch (error) {
             console.error('WorkspaceProvider error:', error);
             return [
-                new WorkspaceHeaderItem('❌ Error loading workspaces', 'error'),
-                new WorkspaceHeaderItem('🔄 Try refreshing the view', 'help-text')
+                new WorkspaceHeaderItem('Error loading workspaces', 'error'),
+                new WorkspaceHeaderItem('Try refreshing the view', 'help-text')
             ];
         }
     }
@@ -138,25 +142,23 @@ class WorkspaceItem extends vscode.TreeItem {
     ) {
         super(label, collapsibleState);
 
-        // Create enhanced description with status indicator and owner info
-        const statusIndicator = this.getStatusIndicator(status);
         const ownerInfo = ownerName && ownerName !== 'Unknown' ? ` • by ${ownerName}` : '';
         const sshInfo = tunnelPort ? ` • SSH :${tunnelPort}` : '';
-        this.description = `${statusIndicator} ${status}${ownerInfo}${sshInfo}`;
+        this.description = `${status}${ownerInfo}${sshInfo}`;
 
         // Enhanced tooltip with markdown formatting
         const formattedTime = startedTime ? new Date(startedTime).toLocaleString() : 'N/A';
         const sshTooltip = tunnelPort
-            ? `\n🔌 **SSH Tunnel:** Active on port ${tunnelPort}  \n💻 **SSH Command:** \`ssh -p ${tunnelPort} ubuntu@localhost\``
+            ? `\n**SSH Tunnel:** Active on port ${tunnelPort}\n**SSH Command:** \`ssh -p ${tunnelPort} ubuntu@localhost\``
             : '';
         this.tooltip = new vscode.MarkdownString(`
 **${label}**
 
-${statusIndicator} **Status:** ${status}
-👤 **Owner:** ${ownerName}
-📅 **Created:** ${formattedTime}
-🆔 **Workspace ID:** \`${workspaceId}\`
-${url ? `🔗 **URL:** ${url}` : ''}${sshTooltip}
+**Status:** ${status}
+**Owner:** ${ownerName}
+**Created:** ${formattedTime}
+**Workspace ID:** \`${workspaceId}\`
+${url ? `**URL:** ${url}` : ''}${sshTooltip}
 
 ${status.toLowerCase() === 'started' || status.toLowerCase() === 'running'
     ? '*Workspace is ready for use*'
@@ -197,24 +199,6 @@ ${status.toLowerCase() === 'started' || status.toLowerCase() === 'running'
         }
     }
     
-    private getStatusIndicator(status: string): string {
-        switch (status.toLowerCase()) {
-            case 'started':
-            case 'running':
-                return '🟢';
-            case 'starting':
-                return '🟡';
-            case 'stopping':
-                return '🟠';
-            case 'stopped':
-                return '⚫';
-            case 'failed':
-            case 'error':
-                return '🔴';
-            default:
-                return '⚪';
-        }
-    }
 }
 
 // Header item for the workspace list
