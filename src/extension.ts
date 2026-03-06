@@ -83,6 +83,59 @@ function getNextAvailablePort(): Promise<number> {
 }
 
 const SSH_CONFIG_PATH = path.join(os.homedir(), '.ssh', 'config');
+const DOMINO_SSH_CONFIG_PATH = path.join(os.homedir(), '.domino', 'ssh', 'config');
+
+function readPortFromDominoSshConfig(workspaceId: string): number | null {
+    if (!fs.existsSync(DOMINO_SSH_CONFIG_PATH)) {
+        return null;
+    }
+    const content = fs.readFileSync(DOMINO_SSH_CONFIG_PATH, 'utf-8');
+    const lines = content.split('\n');
+    let inHostBlock = false;
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed === `Host ${workspaceId}`) {
+            inHostBlock = true;
+            continue;
+        }
+        if (inHostBlock) {
+            if (trimmed.startsWith('Host ')) {
+                break;
+            }
+            const portMatch = trimmed.match(/^Port\s+(\d+)$/i);
+            if (portMatch) {
+                return parseInt(portMatch[1], 10);
+            }
+        }
+    }
+    return null;
+}
+
+function waitForDominoSshConfig(workspaceId: string, timeoutMs = 30000): Promise<number> {
+    // Capture any pre-existing port so we can detect when dom connect writes a fresh one
+    const stalePort = readPortFromDominoSshConfig(workspaceId);
+    return new Promise((resolve, reject) => {
+        const startTime = Date.now();
+        const poll = () => {
+            const port = readPortFromDominoSshConfig(workspaceId);
+            if (port !== null && port !== stalePort) {
+                resolve(port);
+                return;
+            }
+            if (Date.now() - startTime >= timeoutMs) {
+                // If there's still a stale entry, use it as a last resort (proxy may still be running)
+                if (stalePort !== null) {
+                    resolve(stalePort);
+                } else {
+                    reject(new Error(`Timed out waiting for SSH tunnel to be established for workspace ${workspaceId}`));
+                }
+                return;
+            }
+            setTimeout(poll, 500);
+        };
+        poll();
+    });
+}
 
 function addSshConfigEntry(workspaceId: string, port: number): void {
     const marker = `domino-vscode-extension:${workspaceId}`;
@@ -220,8 +273,6 @@ async function connectSSH(workspaceItem?: any) {
             return;
         }
 
-        const port = await getNextAvailablePort();
-
         // Build the dom connect command
         const command = `dom connect ${workspaceId} --domino-api-host=${apiUrl} -l ubuntu`;
         console.log(`Running in terminal: ${command}`);
@@ -233,7 +284,17 @@ async function connectSSH(workspaceItem?: any) {
         terminal.show();
         terminal.sendText(command);
 
-        // Store the tunnel immediately so the tree updates
+        // Wait for dom connect to write the dynamically assigned port to ~/.domino/ssh/config
+        let port: number;
+        try {
+            port = await waitForDominoSshConfig(workspaceId);
+        } catch (err) {
+            vscode.window.showErrorMessage(`Failed to establish SSH tunnel for "${workspaceName}": timed out waiting for dom connect to start`);
+            terminal.dispose();
+            return;
+        }
+
+        // Store the tunnel and write SSH config entry with the actual assigned port
         const tunnel: SshTunnel = {
             terminal,
             port,
@@ -243,9 +304,6 @@ async function connectSSH(workspaceItem?: any) {
         activeTunnels.set(workspaceId, tunnel);
         addSshConfigEntry(workspaceId, port);
         workspaceProvider.refresh();
-
-        // Brief pause to let dom connect start and open the browser for auth
-        await new Promise(resolve => setTimeout(resolve, 2500));
 
         // Check auto-connect setting
         const config = vscode.workspace.getConfiguration('domino');
