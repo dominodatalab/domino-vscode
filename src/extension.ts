@@ -20,10 +20,12 @@ import {
 
 // SSH tunnel tracking
 interface SshTunnel {
-    terminal: vscode.Terminal;
+    terminal?: vscode.Terminal;  // undefined when isBackground is true
     port: number;
     workspaceId: string;
     workspaceName: string;
+    isBackground: boolean;
+    pid?: number;               // process PID when isBackground is true
 }
 
 const activeTunnels: Map<string, SshTunnel> = new Map();
@@ -49,37 +51,11 @@ function isDomCliInstalled(): Promise<boolean> {
     });
 }
 
-function getNextAvailablePort(): Promise<number> {
-    const config = vscode.workspace.getConfiguration('domino');
-    const startPort = config.get<number>('sshTunnelStartPort', 2222);
-
-    // Collect ports already in use by active tunnels
-    const usedPorts = new Set<number>();
-    for (const tunnel of activeTunnels.values()) {
-        usedPorts.add(tunnel.port);
-    }
-
-    // Find the next port starting from startPort that isn't used by a tunnel
-    let candidate = startPort;
-    while (usedPorts.has(candidate)) {
-        candidate++;
-    }
-
-    // Verify the port is actually free with a TCP bind test
-    return new Promise((resolve, reject) => {
-        const tryPort = (port: number) => {
-            const server = net.createServer();
-            server.once('error', () => {
-                // Port in use, try next
-                tryPort(port + 1);
-            });
-            server.once('listening', () => {
-                server.close(() => resolve(port));
-            });
-            server.listen(port, '127.0.0.1');
-        };
-        tryPort(candidate);
-    });
+function sanitizeHostname(name: string): string {
+    return 'domino-' + name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
 }
 
 const SSH_CONFIG_PATH = path.join(os.homedir(), '.ssh', 'config');
@@ -137,11 +113,12 @@ function waitForDominoSshConfig(workspaceId: string, timeoutMs = 30000): Promise
     });
 }
 
-function addSshConfigEntry(workspaceId: string, port: number): void {
+function addSshConfigEntry(workspaceId: string, workspaceName: string, port: number): void {
     const marker = `domino-vscode-extension:${workspaceId}`;
+    const hostName = sanitizeHostname(workspaceName);
     const entry = [
         `# ${marker}`,
-        `Host ${workspaceId}`,
+        `Host ${hostName}`,
         `    HostName localhost`,
         `    Port ${port}`,
         `    User ubuntu`,
@@ -224,6 +201,78 @@ function cleanupAllSshConfigEntries(): void {
     fs.writeFileSync(SSH_CONFIG_PATH, filteredLines.join('\n'), 'utf-8');
 }
 
+// --- Background tunnel state persistence ---
+
+const TUNNEL_STATE_PATH = path.join(os.homedir(), '.domino', 'vscode-extension', 'tunnels.json');
+
+interface PersistedTunnel {
+    workspaceId: string;
+    workspaceName: string;
+    pid: number;
+    port: number;
+}
+
+function loadPersistedTunnelStates(): PersistedTunnel[] {
+    if (!fs.existsSync(TUNNEL_STATE_PATH)) { return []; }
+    try {
+        return JSON.parse(fs.readFileSync(TUNNEL_STATE_PATH, 'utf-8'));
+    } catch {
+        return [];
+    }
+}
+
+function saveBackgroundTunnelState(tunnel: SshTunnel): void {
+    const dir = path.dirname(TUNNEL_STATE_PATH);
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    }
+    let state = loadPersistedTunnelStates().filter(t => t.workspaceId !== tunnel.workspaceId);
+    state.push({ workspaceId: tunnel.workspaceId, workspaceName: tunnel.workspaceName, pid: tunnel.pid!, port: tunnel.port });
+    fs.writeFileSync(TUNNEL_STATE_PATH, JSON.stringify(state, null, 2), 'utf-8');
+}
+
+function removeBackgroundTunnelState(workspaceId: string): void {
+    if (!fs.existsSync(TUNNEL_STATE_PATH)) { return; }
+    try {
+        const state = loadPersistedTunnelStates().filter(t => t.workspaceId !== workspaceId);
+        fs.writeFileSync(TUNNEL_STATE_PATH, JSON.stringify(state, null, 2), 'utf-8');
+    } catch { /* ignore */ }
+}
+
+function restoreBackgroundTunnels(): void {
+    const states = loadPersistedTunnelStates();
+    const alive: PersistedTunnel[] = [];
+
+    for (const state of states) {
+        if (isProcessRunning(state.pid)) {
+            const tunnel: SshTunnel = {
+                port: state.port,
+                workspaceId: state.workspaceId,
+                workspaceName: state.workspaceName,
+                pid: state.pid,
+                isBackground: true,
+            };
+            activeTunnels.set(state.workspaceId, tunnel);
+            // Ensure the SSH config entry is still present so Remote-SSH can connect
+            addSshConfigEntry(state.workspaceId, state.workspaceName, state.port);
+            alive.push(state);
+        }
+        // Dead processes are simply dropped; their SSH config entries will have been
+        // cleaned up on their next reconnect attempt or by the user explicitly.
+    }
+
+    // Rewrite the state file with only the live processes
+    const dir = path.dirname(TUNNEL_STATE_PATH);
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    }
+    fs.writeFileSync(TUNNEL_STATE_PATH, JSON.stringify(alive, null, 2), 'utf-8');
+
+    if (alive.length > 0) {
+        workspaceProvider.refresh();
+    }
+}
+
 // --- SSH Tunnel Commands ---
 
 async function connectSSH(workspaceItem?: any) {
@@ -273,44 +322,76 @@ async function connectSSH(workspaceItem?: any) {
             return;
         }
 
-        // Build the dom connect command
-        const command = `dom connect ${workspaceId} --domino-api-host=${apiUrl} -l ubuntu`;
-        console.log(`Running in terminal: ${command}`);
+        // Check which proxy mode the user wants
+        const config = vscode.workspace.getConfiguration('domino');
+        const backgroundMode = config.get<boolean>('sshBackgroundProxy', false);
 
-        // Create a visible terminal so the user can see auth flow and output
-        const terminal = vscode.window.createTerminal({
-            name: `SSH: ${workspaceName}`,
-        });
-        terminal.show();
-        terminal.sendText(command);
-
-        // Wait for dom connect to write the dynamically assigned port to ~/.domino/ssh/config
+        const domArgs = ['connect', workspaceId, `--domino-api-host=${apiUrl}`, '-l', 'ubuntu'];
         let port: number;
-        try {
-            port = await waitForDominoSshConfig(workspaceId);
-        } catch (err) {
-            vscode.window.showErrorMessage(`Failed to establish SSH tunnel for "${workspaceName}": timed out waiting for dom connect to start`);
-            terminal.dispose();
-            return;
+
+        if (backgroundMode) {
+            // --- Background mode: spawn a detached process that survives VSCode ---
+            const logDir = path.join(os.homedir(), '.domino', 'vscode-extension', 'logs');
+            if (!fs.existsSync(logDir)) {
+                fs.mkdirSync(logDir, { recursive: true, mode: 0o700 });
+            }
+            const logFile = path.join(logDir, `${workspaceId}.log`);
+            const logFd = fs.openSync(logFile, 'a');
+
+            console.log(`Spawning background process: dom ${domArgs.join(' ')}`);
+            const proc = child_process.spawn('dom', domArgs, {
+                detached: true,
+                stdio: ['ignore', logFd, logFd],
+            });
+            proc.unref(); // Allow VSCode to exit without killing this process
+            fs.closeSync(logFd);
+
+            // Wait for dom connect to write the dynamically assigned port to ~/.domino/ssh/config
+            try {
+                port = await waitForDominoSshConfig(workspaceId);
+            } catch (err) {
+                vscode.window.showErrorMessage(`Failed to establish SSH tunnel for "${workspaceName}": timed out waiting for dom connect to start`);
+                try { process.kill(proc.pid!, 'SIGTERM'); } catch { /* already dead */ }
+                return;
+            }
+
+            const tunnel: SshTunnel = { port, workspaceId, workspaceName, pid: proc.pid, isBackground: true };
+            activeTunnels.set(workspaceId, tunnel);
+            addSshConfigEntry(workspaceId, workspaceName, port);
+            saveBackgroundTunnelState(tunnel);
+            workspaceProvider.refresh();
+
+        } else {
+            // --- Terminal mode: run dom connect in a visible VSCode terminal (default) ---
+            const command = `dom connect ${workspaceId} --domino-api-host=${apiUrl} -l ubuntu`;
+            console.log(`Running in terminal: ${command}`);
+
+            const terminal = vscode.window.createTerminal({ name: `SSH: ${workspaceName}` });
+            terminal.show();
+            terminal.sendText(command);
+
+            // Wait for dom connect to write the dynamically assigned port to ~/.domino/ssh/config
+            try {
+                port = await waitForDominoSshConfig(workspaceId);
+            } catch (err) {
+                vscode.window.showErrorMessage(`Failed to establish SSH tunnel for "${workspaceName}": timed out waiting for dom connect to start`);
+                terminal.dispose();
+                return;
+            }
+
+            const tunnel: SshTunnel = { terminal, port, workspaceId, workspaceName, isBackground: false };
+            activeTunnels.set(workspaceId, tunnel);
+            addSshConfigEntry(workspaceId, workspaceName, port);
+            workspaceProvider.refresh();
         }
 
-        // Store the tunnel and write SSH config entry with the actual assigned port
-        const tunnel: SshTunnel = {
-            terminal,
-            port,
-            workspaceId,
-            workspaceName
-        };
-        activeTunnels.set(workspaceId, tunnel);
-        addSshConfigEntry(workspaceId, port);
-        workspaceProvider.refresh();
+        const sshHost = sanitizeHostname(workspaceName);
 
         // Check auto-connect setting
-        const config = vscode.workspace.getConfiguration('domino');
         const autoConnect = config.get<boolean>('sshAutoConnect', true);
 
         if (autoConnect) {
-            openRemoteSshWindow(workspaceId, port);
+            openRemoteSshWindow(sshHost, port);
         } else {
             vscode.window.showInformationMessage(
                 `SSH tunnel to "${workspaceName}" established on port ${port}`,
@@ -318,7 +399,7 @@ async function connectSSH(workspaceItem?: any) {
                 'Copy SSH Command'
             ).then(action => {
                 if (action === 'Connect Remote-SSH') {
-                    openRemoteSshWindow(workspaceId, port);
+                    openRemoteSshWindow(sshHost, port);
                 } else if (action === 'Copy SSH Command') {
                     vscode.env.clipboard.writeText(`ssh -p ${port} ubuntu@localhost`);
                     vscode.window.showInformationMessage('SSH command copied to clipboard');
@@ -331,8 +412,8 @@ async function connectSSH(workspaceItem?: any) {
     }
 }
 
-async function openRemoteSshWindow(workspaceId: string, port: number): Promise<void> {
-    const remoteUri = vscode.Uri.parse(`vscode-remote://ssh-remote+${workspaceId}/mnt`);
+async function openRemoteSshWindow(hostName: string, port: number): Promise<void> {
+    const remoteUri = vscode.Uri.parse(`vscode-remote://ssh-remote+${hostName}/mnt`);
 
     try {
         // Primary: open a new window connected to the remote host
@@ -345,7 +426,7 @@ async function openRemoteSshWindow(workspaceId: string, port: number): Promise<v
     try {
         // Fallback: use the Remote-SSH extension command
         await vscode.commands.executeCommand('opensshremote.openEmptyWindow', {
-            host: `${workspaceId}`
+            host: hostName
         });
         return;
     } catch (err) {
@@ -401,8 +482,15 @@ async function disconnectSSH(workspaceItem?: any) {
             return;
         }
 
-        // Close the tunnel terminal
-        tunnel.terminal.dispose();
+        // Stop the proxy process
+        if (tunnel.isBackground) {
+            if (tunnel.pid) {
+                try { process.kill(tunnel.pid, 'SIGTERM'); } catch { /* already dead */ }
+            }
+            removeBackgroundTunnelState(workspaceId);
+        } else {
+            tunnel.terminal!.dispose();
+        }
         activeTunnels.delete(workspaceId);
         removeSshConfigEntry(workspaceId);
         workspaceProvider.refresh();
@@ -1137,7 +1225,14 @@ async function stopWorkspace(workspaceItem?: any) {
             // Clean up any active SSH tunnel for this workspace
             const tunnel = activeTunnels.get(workspaceId);
             if (tunnel) {
-                tunnel.terminal.dispose();
+                if (tunnel.isBackground) {
+                    if (tunnel.pid) {
+                        try { process.kill(tunnel.pid, 'SIGTERM'); } catch { /* already dead */ }
+                    }
+                    removeBackgroundTunnelState(workspaceId);
+                } else {
+                    tunnel.terminal!.dispose();
+                }
                 activeTunnels.delete(workspaceId);
                 removeSshConfigEntry(workspaceId);
             }
@@ -1674,12 +1769,15 @@ export function deactivate() {
         tokenRefreshTimer = undefined;
     }
 
-    // Clean up SSH tunnels
-    for (const tunnel of activeTunnels.values()) {
-        tunnel.terminal.dispose();
+    // Clean up SSH tunnels — terminal-based tunnels only.
+    // Background tunnels are intentionally left running so they survive VSCode closing.
+    for (const [id, tunnel] of activeTunnels.entries()) {
+        if (!tunnel.isBackground) {
+            tunnel.terminal!.dispose();
+            removeSshConfigEntry(id);
+        }
     }
     activeTunnels.clear();
-    cleanupAllSshConfigEntries();
 }
 
 let dominoClient: DominoApiClient;
@@ -1769,14 +1867,17 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    // Add SSH tunnel cleanup disposable
+    // Add SSH tunnel cleanup disposable — terminal-based tunnels only.
+    // Background tunnels are intentionally left running so they survive VSCode closing.
     context.subscriptions.push({
         dispose: () => {
-            for (const tunnel of activeTunnels.values()) {
-                tunnel.terminal.dispose();
+            for (const [id, tunnel] of activeTunnels.entries()) {
+                if (!tunnel.isBackground) {
+                    tunnel.terminal!.dispose();
+                    removeSshConfigEntry(id);
+                }
             }
             activeTunnels.clear();
-            cleanupAllSshConfigEntries();
         }
     });
 
@@ -1799,6 +1900,9 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Check if already authenticated
     checkAuthentication();
+
+    // Restore any background SSH proxies that survived a previous VSCode session
+    restoreBackgroundTunnels();
 }
 
 // Token refresh scheduling

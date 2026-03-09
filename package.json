@@ -2,7 +2,7 @@
   "name": "domino-data-lab-vscode-extension",
   "displayName": "Domino Data Lab ",
   "description": "VS Code extension for interacting with Domino Data Lab platform",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "publisher": "dominodatalab",
   "icon": "icons/domino-logo-black.png",
   "author": {
@@ -441,17 +441,15 @@
           },
           "description": "Default commands for running different file types in Domino jobs"
         },
-        "domino.sshTunnelStartPort": {
-          "type": "number",
-          "default": 2222,
-          "minimum": 1024,
-          "maximum": 65535,
-          "description": "Starting port number for SSH tunnels (will increment if port is in use)"
-        },
         "domino.sshAutoConnect": {
           "type": "boolean",
           "default": true,
           "description": "Automatically open a Remote-SSH window after establishing an SSH tunnel to a workspace"
+        },
+        "domino.sshBackgroundProxy": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run the SSH proxy (dom connect) as a background process independent of VS Code. When enabled, the proxy survives closing VS Code and reopening it will automatically reconnect your Remote-SSH window. The proxy must be stopped explicitly via the Disconnect SSH button. Proxy output is logged to ~/.domino/vscode-extension/logs/<workspaceId>.log."
         }
       }
     }
