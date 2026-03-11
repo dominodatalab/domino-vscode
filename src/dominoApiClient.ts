@@ -26,6 +26,7 @@ export class DominoApiClient {
     public currentProjectId: string | null = null;
     public currentProjectName: string | null = null;
     private apiVersion: string = 'v4'; // Default, but will be detected
+    private _currentUserId: string | null = null;
 
     async authenticate(apiUrl: string, accessToken: string): Promise<void> {
         this._apiUrl = apiUrl.replace(/\/$/, ''); // Remove trailing slash
@@ -63,6 +64,19 @@ export class DominoApiClient {
         this._apiUrl = '';
         this.currentProjectId = null;
         this.currentProjectName = null;
+        this._currentUserId = null;
+    }
+
+    async getSelf(): Promise<{ id: string; userName: string }> {
+        if (!this.httpClient) {
+            throw new Error('Not authenticated');
+        }
+        if (this._currentUserId) {
+            return { id: this._currentUserId, userName: '' };
+        }
+        const response = await this.httpClient.get('/users/self');
+        this._currentUserId = response.data.id;
+        return response.data;
     }
 
     private async detectApiVersion(): Promise<void> {
@@ -328,27 +342,32 @@ export class DominoApiClient {
         }
 
         try {
+            const self = await this.getSelf();
+
             // Add required query parameters
             const endpoint = `/workspace/project/${this.currentProjectId}/workspace?offset=0&limit=50`;
             console.log(`Getting workspaces from: ${endpoint}`);
-            
+
             const response = await this.httpClient.get(endpoint);
             console.log('Workspaces response:', response.data);
-            
+
             // Handle different response formats
+            let workspaces: any[];
             if (response.data && Array.isArray(response.data)) {
-                console.log(`Found ${response.data.length} workspaces`);
-                return response.data;
+                workspaces = response.data;
             } else if (response.data && response.data.workspaces) {
-                console.log(`Found ${response.data.workspaces.length} workspaces`);
-                return response.data.workspaces;
+                workspaces = response.data.workspaces;
             } else if (response.data && response.data.data) {
-                console.log(`Found ${response.data.data.length} workspaces`);
-                return response.data.data;
+                workspaces = response.data.data;
             } else {
                 console.log('No workspaces array found in response');
                 return [];
             }
+
+            // Only show workspaces owned by the current user
+            const ownedWorkspaces = workspaces.filter(ws => ws.ownerId === self.id);
+            console.log(`Found ${workspaces.length} workspaces total, ${ownedWorkspaces.length} owned by current user`);
+            return ownedWorkspaces;
         } catch (error) {
             const axiosError = error as AxiosError;
             console.error('Get workspaces error:', axiosError.response?.data || axiosError.message);
