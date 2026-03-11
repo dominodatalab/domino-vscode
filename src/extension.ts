@@ -413,7 +413,9 @@ async function connectSSH(workspaceItem?: any) {
 }
 
 async function openRemoteSshWindow(hostName: string, port: number): Promise<void> {
-    const remoteUri = vscode.Uri.parse(`vscode-remote://ssh-remote+${hostName}/mnt`);
+    const config = vscode.workspace.getConfiguration('domino');
+    const defaultDir = config.get<string>('workspaceDefaultDirectory', '/mnt');
+    const remoteUri = vscode.Uri.parse(`vscode-remote://ssh-remote+${hostName}${defaultDir}`);
 
     try {
         // Primary: open a new window connected to the remote host
