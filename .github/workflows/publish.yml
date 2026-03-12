@@ -1,0 +1,48 @@
+name: Publish to VS Code Marketplace
+
+# Runs on every push to main — currently disabled until the extension
+# has been published for the first time.
+#
+# To enable publishing:
+#   1. Run `npx vsce publish` locally to do the initial publish
+#   2. Generate a Personal Access Token in Azure DevOps with Marketplace (publish) scope
+#   3. Add it as a GitHub Actions secret named VSCE_PAT
+#   4. Uncomment the `publish` step below
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  publish:
+    name: Package & Publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Package extension
+        run: npx vsce package
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-package
+          path: '*.vsix'
+          retention-days: 30
+
+      # Uncomment the step below once you have completed the initial publish
+      # and added the VSCE_PAT secret to this repository.
+      #
+      # - name: Publish to Marketplace
+      #   run: npx vsce publish
+      #   env:
+      #     VSCE_PAT: ${{ secrets.VSCE_PAT }}
