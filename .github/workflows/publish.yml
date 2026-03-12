@@ -1,13 +1,16 @@
 name: Publish to VS Code Marketplace
 
-# Runs on every push to main — currently disabled until the extension
-# has been published for the first time.
+# Runs on every push to main. Fails if the version in package.json has not
+# been incremented from the previous commit — the marketplace rejects duplicate
+# version numbers, so this acts as an early gate.
 #
 # To enable publishing:
 #   1. Run `npx vsce publish` locally to do the initial publish
 #   2. Generate a Personal Access Token in Azure DevOps with Marketplace (publish) scope
 #   3. Add it as a GitHub Actions secret named VSCE_PAT
 #   4. Uncomment the `publish` step below
+#
+# Slack notifications require a SLACK_WEBHOOK_URL secret (incoming webhook URL).
 
 on:
   push:
@@ -20,6 +23,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # needed to diff against the previous commit
 
       - uses: actions/setup-node@v4
         with:
@@ -28,6 +33,18 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Verify version has been incremented
+        run: |
+          CURRENT=$(node -p "require('./package.json').version")
+          PREVIOUS=$(git show HEAD^:package.json | node -e "let d=''; process.stdin.on('data', c => d += c); process.stdin.on('end', () => { try { console.log(JSON.parse(d).version) } catch(e) { console.log('0.0.0') } })")
+          echo "Previous version: $PREVIOUS"
+          echo "Current version:  $CURRENT"
+          if [ "$CURRENT" = "$PREVIOUS" ]; then
+            echo "❌ Version has not been updated ($CURRENT). Bump the version in package.json before merging to main."
+            exit 1
+          fi
+          echo "✅ Version incremented: $PREVIOUS → $CURRENT"
 
       - name: Package extension
         run: npx vsce package
@@ -46,3 +63,40 @@ jobs:
       #   run: npx vsce publish
       #   env:
       #     VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Compute short SHA
+        if: always()
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+      - name: Notify Slack
+        if: always()
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "${{ job.status == 'success' && '✅' || '❌' }} *Domino VS Code Extension — Publish ${{ job.status }}*",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "${{ job.status == 'success' && '✅' || '❌' }} *Domino VS Code Extension — Publish ${{ job.status }}*\n*Commit:* <https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ env.SHORT_SHA }}> — ${{ github.event.head_commit.message }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*VSIX Artifact:*\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View in GitHub Actions>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Marketplace:*\n<https://marketplace.visualstudio.com/items?itemName=dominodatalab.domino-data-lab-vscode-extension|View on VS Code Marketplace>"
+                    }
+                  ]
+                }
+              ]
+            }
