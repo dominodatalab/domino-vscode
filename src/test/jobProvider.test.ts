@@ -137,7 +137,7 @@ describe('JobProvider – getChildren with jobs', () => {
         const items = await provider.getChildren();
         const jobItems = items.filter(i => i.contextValue === 'job');
 
-        expect(jobItems.map(j => j.label)).toEqual(['Training Run', 'Evaluation']);
+        expect(jobItems.map(j => j.label)).toEqual(['#1 Training Run', '#2 Evaluation']);
     });
 
     it('shows summary header with total count', async () => {
@@ -251,7 +251,7 @@ describe('JobProvider – time ago formatting', () => {
         );
 
         const items = await provider.getChildren();
-        const jobItem = items.find(i => i.contextValue === 'job')!;
+        const jobItem = items.find(i => i.contextValue === 'job-running')!;
 
         expect(jobItem.description as string).toContain('running');
     });

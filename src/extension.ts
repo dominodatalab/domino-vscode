@@ -554,6 +554,13 @@ async function authenticate() {
         vscode.commands.executeCommand('setContext', 'domino:authenticated', true);
         vscode.window.showInformationMessage('Successfully authenticated with Domino!');
 
+        // Fetch current user for status bar display
+        try {
+            const self = await dominoClient.getSelf();
+            currentUserName = self.userName || '';
+        } catch { /* non-critical */ }
+        updateStatusBar();
+
         projectProvider.refresh();
         jobProvider.refresh();
         workspaceProvider.refresh();
@@ -583,6 +590,8 @@ async function signOut() {
         stopAutoRefresh();
 
         vscode.commands.executeCommand('setContext', 'domino:authenticated', false);
+        currentUserName = '';
+        updateStatusBar();
 
         projectProvider.refresh();
         jobProvider.refresh();
@@ -599,12 +608,12 @@ async function selectProject(projectItem?: any) {
         // If called from tree view with a project item, use it directly
         if (projectItem && projectItem.projectId && projectItem.label) {
             console.log('Selecting project from tree view:', projectItem.label);
-            await dominoClient.setCurrentProject(projectItem.projectId, projectItem.label);
+            await dominoClient.setCurrentProject(projectItem.projectId, projectItem.label, projectItem.ownerUsername);
             vscode.window.showInformationMessage(`Selected project: ${projectItem.label}`);
             
             // Update status bar
-            vscode.window.setStatusBarMessage(`Domino: ${projectItem.label}`, 5000);
-            
+            updateStatusBar();
+
             // Refresh all views
             console.log('Refreshing all views after project selection');
             jobProvider.refresh();
@@ -631,12 +640,12 @@ async function selectProject(projectItem?: any) {
             const project = projects[0];
             console.log('Only one project available, auto-selecting:', project.name);
             
-            await dominoClient.setCurrentProject(project.id, project.name);
+            await dominoClient.setCurrentProject(project.id, project.name, project.ownerUsername);
             vscode.window.showInformationMessage(`Auto-selected project: ${project.name}`);
             
             // Update status bar
-            vscode.window.setStatusBarMessage(`Domino: ${project.name}`, 5000);
-            
+            updateStatusBar();
+
             // Refresh all views
             console.log('Refreshing all views after auto project selection');
             jobProvider.refresh();
@@ -662,11 +671,11 @@ async function selectProject(projectItem?: any) {
         });
 
         if (selected) {
-            await dominoClient.setCurrentProject(selected.project.id, selected.project.name);
+            await dominoClient.setCurrentProject(selected.project.id, selected.project.name, selected.project.ownerUsername);
             vscode.window.showInformationMessage(`Selected project: ${selected.project.name}`);
             
             // Update status bar
-            vscode.window.setStatusBarMessage(`Domino: ${selected.project.name}`, 5000);
+            updateStatusBar();
             
             // Manually refresh all views to ensure they update
             console.log('Refreshing all views after project selection');
@@ -712,7 +721,7 @@ async function createProject() {
     }
 }
 
-async function runJob() {
+async function runJob(prefilledCommand?: string, prefilledTitle?: string) {
     try {
         if (!dominoClient.currentProjectId) {
             vscode.window.showWarningMessage('Please select a project first');
@@ -723,6 +732,7 @@ async function runJob() {
         const command = await vscode.window.showInputBox({
             prompt: 'Enter command to run',
             placeHolder: 'python main.py',
+            value: prefilledCommand,
             validateInput: (value: string) => {
                 if (!value || value.trim().length === 0) {
                     return 'Command is required';
@@ -738,7 +748,8 @@ async function runJob() {
         // Get job title
         const title = await vscode.window.showInputBox({
             prompt: 'Enter job title (optional)',
-            placeHolder: 'My Job from VS Code'
+            placeHolder: 'My Job from VS Code',
+            value: prefilledTitle,
         });
 
         // Show progress while getting configuration options
@@ -1654,6 +1665,147 @@ async function startJobFromPanel() {
     await runJob();
 }
 
+async function copyJobId(jobItem?: any) {
+    const id = jobItem?.jobId || jobItem?.id;
+    if (!id) {
+        vscode.window.showWarningMessage('No job ID available');
+        return;
+    }
+    await vscode.env.clipboard.writeText(id);
+    vscode.window.showInformationMessage(`Job ID copied: ${id}`);
+}
+
+async function copyWorkspaceId(workspaceItem?: any) {
+    const id = workspaceItem?.workspaceId;
+    if (!id) {
+        vscode.window.showWarningMessage('No workspace ID available');
+        return;
+    }
+    await vscode.env.clipboard.writeText(id);
+    vscode.window.showInformationMessage(`Workspace ID copied: ${id}`);
+}
+
+async function openProjectInBrowser(projectItem?: any) {
+    const projectName = projectItem?.label;
+    const ownerUsername = projectItem?.ownerUsername;
+    if (!projectName) {
+        vscode.window.showWarningMessage('No project selected');
+        return;
+    }
+    const config = vscode.workspace.getConfiguration('domino');
+    const apiUrl = config.get<string>('apiUrl');
+    if (!apiUrl) {
+        vscode.window.showWarningMessage('Domino API URL not configured');
+        return;
+    }
+    const projectUrl = ownerUsername
+        ? `${apiUrl}/u/${ownerUsername}/${projectName}`
+        : `${apiUrl}/projects`;
+    vscode.env.openExternal(vscode.Uri.parse(projectUrl));
+}
+
+async function rerunJob(jobItem?: any) {
+    if (!jobItem?.jobCommand) {
+        vscode.window.showWarningMessage('No command available for this job');
+        return;
+    }
+    await runJob(jobItem.jobCommand, jobItem.label);
+}
+
+function buildLogWebview(title: string, jobId: string, stdout: string, prepareOutput: string): string {
+    const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const hasSetup = prepareOutput && prepareOutput !== '(empty)';
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
+<style>
+  body { font-family: var(--vscode-editor-font-family, monospace); font-size: var(--vscode-editor-font-size, 13px); background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; padding: 16px; }
+  h2 { font-size: 14px; font-weight: 600; margin: 0 0 4px; color: var(--vscode-foreground); }
+  .meta { font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 16px; }
+  details { border: 1px solid var(--vscode-panel-border, #444); border-radius: 4px; margin-bottom: 12px; overflow: hidden; }
+  summary { padding: 8px 12px; cursor: pointer; background: var(--vscode-sideBarSectionHeader-background, #2d2d2d); font-weight: 600; font-size: 12px; list-style: none; display: flex; align-items: center; gap: 8px; user-select: none; }
+  summary::before { content: '▶'; font-size: 10px; transition: transform 0.15s; display: inline-block; }
+  details[open] summary::before { transform: rotate(90deg); }
+  pre { margin: 0; padding: 12px; white-space: pre-wrap; word-break: break-all; font-family: inherit; font-size: inherit; background: var(--vscode-editor-background); line-height: 1.5; }
+</style>
+</head>
+<body>
+  <h2>Domino Job Logs — ${escape(title)}</h2>
+  <div class="meta">Job ID: ${escape(jobId)}</div>
+  ${hasSetup ? `
+  <details>
+    <summary>Setup Output</summary>
+    <pre>${escape(prepareOutput)}</pre>
+  </details>` : ''}
+  <details open>
+    <summary>User Output</summary>
+    <pre>${escape(stdout)}</pre>
+  </details>
+</body>
+</html>`;
+}
+
+async function viewJobLogs(jobItem?: any) {
+    const jobId = jobItem?.jobId || jobItem?.id;
+    const jobTitle = jobItem?.label || jobId;
+
+    if (!jobId) {
+        vscode.window.showWarningMessage('No job selected');
+        return;
+    }
+
+    try {
+        const logs = await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Fetching logs for "${jobTitle}"...`,
+            cancellable: false,
+        }, () => dominoClient.getJobLogs(jobId));
+
+        const panel = vscode.window.createWebviewPanel(
+            'dominoJobLogs',
+            `Logs: ${jobTitle}`,
+            vscode.ViewColumn.One,
+            { enableScripts: false }
+        );
+        panel.webview.html = buildLogWebview(jobTitle, jobId, logs.stdout, logs.prepareOutput);
+    } catch (error) {
+        vscode.window.showErrorMessage(`Could not fetch logs: ${error}`);
+    }
+}
+
+async function cancelJob(jobItem?: any) {
+    const jobId = jobItem?.jobId || jobItem?.id;
+    const jobTitle = jobItem?.label || jobId;
+
+    if (!jobId) {
+        vscode.window.showWarningMessage('No job selected');
+        return;
+    }
+
+    const confirm = await vscode.window.showWarningMessage(
+        `Cancel job "${jobTitle}"?`,
+        'Cancel Job',
+        'Keep Running'
+    );
+    if (confirm !== 'Cancel Job') { return; }
+
+    try {
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Cancelling "${jobTitle}"...`,
+            cancellable: false,
+        }, () => dominoClient.cancelJob(jobId));
+
+        vscode.window.showInformationMessage(`Job "${jobTitle}" cancelled.`);
+        jobProvider.refresh();
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to cancel job: ${error}`);
+    }
+}
+
 function generateJobsWebview(jobs: any[], total?: number, hasMore?: boolean): string {
     const totalText = total !== undefined ? ` (${jobs.length} of ${total} total)` : '';
     const moreText = hasMore ? '<p><em>Showing first 50 jobs. Use the sidebar to load more.</em></p>' : '';
@@ -1752,6 +1904,13 @@ async function checkAuthentication() {
     vscode.commands.executeCommand('setContext', 'domino:authenticated', true);
     console.log('Auto-authenticated with stored OAuth tokens');
 
+    // Fetch current user for status bar
+    try {
+        const self = await dominoClient.getSelf();
+        currentUserName = self.userName || '';
+    } catch { /* non-critical */ }
+    updateStatusBar();
+
     projectProvider.refresh();
     jobProvider.refresh();
     workspaceProvider.refresh();
@@ -1787,6 +1946,27 @@ let projectProvider: ProjectProvider;
 let jobProvider: JobProvider;
 let workspaceProvider: WorkspaceProvider;
 let secretStorage: vscode.SecretStorage;
+let statusBarItem: vscode.StatusBarItem;
+let currentUserName: string = '';
+
+function updateStatusBar(): void {
+    if (!statusBarItem) { return; }
+    if (!dominoClient.isAuthenticated) {
+        statusBarItem.hide();
+        return;
+    }
+    if (dominoClient.currentProjectName) {
+        const label = dominoClient.currentOwnerUsername
+            ? `${dominoClient.currentOwnerUsername}/${dominoClient.currentProjectName}`
+            : dominoClient.currentProjectName;
+        statusBarItem.text = `$(project) ${label}`;
+        statusBarItem.tooltip = `Project: ${label}${currentUserName ? ` | User: ${currentUserName}` : ''}\nClick to change project`;
+    } else {
+        statusBarItem.text = `$(account) Domino`;
+        statusBarItem.tooltip = `${currentUserName ? `Signed in as ${currentUserName}. ` : ''}Click to select a project`;
+    }
+    statusBarItem.show();
+}
 
 // Auto-refresh functionality
 let autoRefreshTimer: NodeJS.Timeout | undefined;
@@ -1815,6 +1995,11 @@ export function activate(context: vscode.ExtensionContext) {
     projectProvider = new ProjectProvider(dominoClient);
     jobProvider = new JobProvider(dominoClient);
     workspaceProvider = new WorkspaceProvider(dominoClient, activeTunnels);
+
+    // Status bar item — shows current project and logged-in user
+    statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+    statusBarItem.command = 'domino.selectProject';
+    context.subscriptions.push(statusBarItem);
 
     // Register tree data providers
     vscode.window.registerTreeDataProvider('dominoProjects', projectProvider);
@@ -1851,6 +2036,12 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('domino.disconnectSSH', disconnectSSH),
         // Auth commands
         vscode.commands.registerCommand('domino.signOut', signOut),
+        vscode.commands.registerCommand('domino.copyJobId', copyJobId),
+        vscode.commands.registerCommand('domino.copyWorkspaceId', copyWorkspaceId),
+        vscode.commands.registerCommand('domino.openProjectInBrowser', openProjectInBrowser),
+        vscode.commands.registerCommand('domino.rerunJob', rerunJob),
+        vscode.commands.registerCommand('domino.viewJobLogs', viewJobLogs),
+        vscode.commands.registerCommand('domino.cancelJob', cancelJob),
     ];
 
     context.subscriptions.push(...commands);
@@ -1967,9 +2158,6 @@ function startAutoRefresh() {
             try {
                 jobProvider.refresh();
                 workspaceProvider.refresh();
-                
-                const now = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
-                vscode.window.setStatusBarMessage(`Domino: Last updated ${now}`, 5000);
             } catch (error) {
                 console.error('Error during auto-refresh:', error);
             }

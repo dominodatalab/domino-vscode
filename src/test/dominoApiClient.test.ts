@@ -399,3 +399,65 @@ describe('DominoApiClient – getEnvironments', () => {
         expect(result).toEqual([]);
     });
 });
+
+describe('DominoApiClient – getJobLogs', () => {
+    beforeEach(() => jest.clearAllMocks());
+
+    it('sorts stdout entries by timestamp and returns lines', async () => {
+        const { client, http } = makeAuthenticatedClient();
+        http.get.mockResolvedValue({
+            data: {
+                logset: {
+                    logContent: [
+                        { timestamp: 2000, logType: 'stdout', log: 'second line' },
+                        { timestamp: 1000, logType: 'stdout', log: 'first line' },
+                    ],
+                },
+            },
+        });
+
+        const result = await client.getJobLogs('job-1');
+
+        expect(result.stdout).toBe('first line\nsecond line');
+    });
+
+    it('sorts prepareoutput entries by timestamp and returns lines', async () => {
+        const { client, http } = makeAuthenticatedClient();
+        http.get.mockResolvedValue({
+            data: {
+                logset: {
+                    logContent: [
+                        { timestamp: 500, logType: 'prepareoutput', log: 'prepare second' },
+                        { timestamp: 100, logType: 'prepareoutput', log: 'prepare first' },
+                    ],
+                },
+            },
+        });
+
+        const result = await client.getJobLogs('job-1');
+
+        expect(result.prepareOutput).toBe('prepare first\nprepare second');
+    });
+
+    it('returns (empty) when a stream has no entries', async () => {
+        const { client, http } = makeAuthenticatedClient();
+        http.get.mockResolvedValue({
+            data: { logset: { logContent: [] } },
+        });
+
+        const result = await client.getJobLogs('job-1');
+
+        expect(result.stdout).toBe('(empty)');
+        expect(result.prepareOutput).toBe('(empty)');
+    });
+
+    it('uses correct endpoint', async () => {
+        const { client, http } = makeAuthenticatedClient();
+        http.get.mockResolvedValue({ data: { stdout: [], prepareoutput: [] } });
+
+        await client.getJobLogs('abc123');
+
+        expect(http.get.mock.calls[0][0]).toContain('/jobs/abc123/logsWithProblemSuggestions');
+        expect(http.get.mock.calls[0][0]).toContain('logType=complete');
+    });
+});
