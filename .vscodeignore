@@ -1,5 +1,4 @@
 node_modules/
-out/
 *.vsix
 .vscode-test/
 .nyc_output/
@@ -11,5 +10,6 @@ swagger.json
 .github/
 jest.config.js
 TESTING.md
-src/test/
-src/__mocks__/
+tsconfig.json
+package-lock.json
+src/
