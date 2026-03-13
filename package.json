@@ -3,11 +3,16 @@
   "displayName": "Domino Data Lab ",
   "description": "VS Code extension for interacting with Domino Data Lab platform",
   "version": "1.0.5",
-  "publisher": "dominodatalab",
+  "publisher": "DominoDataLab",
   "icon": "icons/domino-logo-black.png",
   "author": {
     "name": "Blake Moore"
   },
+  "contributors": [
+    {
+      "name": "Nick Jablonski"
+    }
+  ],
   "engines": {
     "vscode": "^1.104.1"
   },
