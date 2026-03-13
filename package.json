@@ -2,7 +2,7 @@
   "name": "domino-data-lab-vscode-extension",
   "displayName": "Domino Data Lab ",
   "description": "VS Code extension for interacting with Domino Data Lab platform",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "publisher": "dominodatalab",
   "icon": "icons/domino-logo-black.png",
   "author": {
@@ -168,6 +168,40 @@
         "title": "Disconnect SSH Tunnel",
         "category": "Domino",
         "icon": "$(debug-disconnect)"
+      },
+      {
+        "command": "domino.copyJobId",
+        "title": "Copy Job ID",
+        "category": "Domino"
+      },
+      {
+        "command": "domino.copyWorkspaceId",
+        "title": "Copy Workspace ID",
+        "category": "Domino"
+      },
+      {
+        "command": "domino.openProjectInBrowser",
+        "title": "Open Project in Browser",
+        "category": "Domino",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "domino.rerunJob",
+        "title": "Re-run Job",
+        "category": "Domino",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "domino.viewJobLogs",
+        "title": "View Job Logs",
+        "category": "Domino",
+        "icon": "$(output)"
+      },
+      {
+        "command": "domino.cancelJob",
+        "title": "Cancel Job",
+        "category": "Domino",
+        "icon": "$(stop)"
       }
     ],
     "views": {
@@ -268,7 +302,7 @@
         },
         {
           "command": "domino.openJobInBrowser",
-          "when": "view == dominoJobs && viewItem == job",
+          "when": "view == dominoJobs && (viewItem == job || viewItem == job-running)",
           "group": "inline"
         },
         {
@@ -330,6 +364,56 @@
           "command": "domino.createWorkspace",
           "when": "view == dominoWorkspaces && viewItem == workspaceAction",
           "group": "inline"
+        },
+        {
+          "command": "domino.openProjectInBrowser",
+          "when": "view == dominoProjects && viewItem == project",
+          "group": "inline"
+        },
+        {
+          "command": "domino.cancelJob",
+          "when": "view == dominoJobs && viewItem == job-running",
+          "group": "inline"
+        },
+        {
+          "command": "domino.cancelJob",
+          "when": "view == dominoJobs && viewItem == job-running",
+          "group": "1_actions"
+        },
+        {
+          "command": "domino.viewJobLogs",
+          "when": "view == dominoJobs && (viewItem == job || viewItem == job-running)",
+          "group": "inline"
+        },
+        {
+          "command": "domino.viewJobLogs",
+          "when": "view == dominoJobs && (viewItem == job || viewItem == job-running)",
+          "group": "1_actions"
+        },
+        {
+          "command": "domino.openJobInBrowser",
+          "when": "view == dominoJobs && (viewItem == job || viewItem == job-running)",
+          "group": "1_actions"
+        },
+        {
+          "command": "domino.rerunJob",
+          "when": "view == dominoJobs && viewItem == job",
+          "group": "inline"
+        },
+        {
+          "command": "domino.rerunJob",
+          "when": "view == dominoJobs && viewItem == job",
+          "group": "1_actions"
+        },
+        {
+          "command": "domino.copyJobId",
+          "when": "view == dominoJobs && (viewItem == job || viewItem == job-running)",
+          "group": "copy"
+        },
+        {
+          "command": "domino.copyWorkspaceId",
+          "when": "view == dominoWorkspaces && (viewItem == workspace-running || viewItem == workspace-stopped || viewItem == workspace-running-ssh)",
+          "group": "copy"
         }
       ],
       "commandPalette": [

@@ -25,6 +25,7 @@ export class DominoApiClient {
     private accessToken: string = '';
     public currentProjectId: string | null = null;
     public currentProjectName: string | null = null;
+    public currentOwnerUsername: string | null = null;
     private apiVersion: string = 'v4'; // Default, but will be detected
     private _currentUserId: string | null = null;
 
@@ -64,6 +65,7 @@ export class DominoApiClient {
         this._apiUrl = '';
         this.currentProjectId = null;
         this.currentProjectName = null;
+        this.currentOwnerUsername = null;
         this._currentUserId = null;
     }
 
@@ -136,9 +138,10 @@ export class DominoApiClient {
         return response.data;
     }
 
-    async setCurrentProject(projectId: string, projectName?: string): Promise<void> {
+    async setCurrentProject(projectId: string, projectName?: string, ownerUsername?: string): Promise<void> {
         this.currentProjectId = projectId;
         this.currentProjectName = projectName || null;
+        this.currentOwnerUsername = ownerUsername || null;
         console.log(`Set current project: ${projectId} (${projectName})`);
     }
 
@@ -872,5 +875,46 @@ export class DominoApiClient {
         }
 
         return files;
+    }
+
+    async getJobLogs(jobId: string): Promise<{ stdout: string; prepareOutput: string }> {
+        if (!this.httpClient) {
+            throw new Error('Not authenticated');
+        }
+
+        const response = await this.httpClient.get(
+            `/jobs/${jobId}/logsWithProblemSuggestions?logType=complete`
+        );
+
+        const data = response.data;
+        if (!data) { return { stdout: '(no log output)', prepareOutput: '' }; }
+
+        const logContent: any[] = data?.logset?.logContent ?? [];
+
+        const toLines = (logType: string) =>
+            logContent
+                .filter(e => e.logType === logType)
+                .sort((a, b) => a.timestamp - b.timestamp)
+                .map(e => e.log ?? '')
+                .join('\n');
+
+        return {
+            stdout: toLines('stdout') || '(empty)',
+            prepareOutput: toLines('prepareoutput') || '(empty)',
+        };
+    }
+
+    async cancelJob(jobId: string): Promise<void> {
+        if (!this.httpClient) {
+            throw new Error('Not authenticated');
+        }
+
+        try {
+            await this.httpClient.post('/jobs/stop', { jobId, commitResults: false });
+        } catch (error) {
+            const axiosError = error as AxiosError;
+            console.error('Cancel job error:', axiosError.response?.data || axiosError.message);
+            throw error;
+        }
     }
 }

@@ -144,7 +144,9 @@ export class JobProvider implements vscode.TreeDataProvider<JobTreeItem> {
                 }
                 
                 // Create a nice display name
-                const jobTitle = job.title || `Job #${job.number || job.id.slice(-4)}`;
+                const jobTitle = job.number
+                    ? `#${job.number} ${job.title || ''}`.trim()
+                    : (job.title || `Job ${job.id.slice(-4)}`);
                 const command = job.jobRunCommand || 'No command';
                 const status = job.statuses?.executionStatus || 'Unknown';
                 
@@ -228,7 +230,7 @@ ${jobNumber ? `**Job Number:** ${jobNumber}` : ''}
 *Click to view in Domino*
         `);
         
-        this.contextValue = 'job';
+        this.contextValue = status.toLowerCase() === 'running' ? 'job-running' : 'job';
         
         // Set icon and color based on status
         switch (status.toLowerCase()) {

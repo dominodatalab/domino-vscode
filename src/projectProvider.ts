@@ -50,7 +50,8 @@ export class ProjectProvider implements vscode.TreeDataProvider<ProjectTreeItem>
                     project.name,
                     project.description,
                     project.id,
-                    vscode.TreeItemCollapsibleState.None
+                    vscode.TreeItemCollapsibleState.None,
+                    project.ownerUsername
                 ));
             }
 
@@ -79,7 +80,8 @@ class ProjectItem extends vscode.TreeItem {
         public readonly label: string,
         public readonly description: string,
         public readonly projectId: string,
-        public readonly collapsibleState: vscode.TreeItemCollapsibleState
+        public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+        public readonly ownerUsername?: string
     ) {
         super(label, collapsibleState);
         this.tooltip = description;
