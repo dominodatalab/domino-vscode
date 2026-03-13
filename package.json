@@ -31,7 +31,7 @@
     "url": "https://github.com/dominodatalab/domino-vscode/issues"
   },
   "homepage": "https://github.com/dominodatalab/domino-vscode/blob/main/README.md",
-  "license": "Apache2",
+  "license": "Apache-2.0",
   "main": "./out/extension.js",
   "activationEvents": [],
   "extensionKind": [
