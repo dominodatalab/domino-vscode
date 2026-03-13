@@ -1,0 +1,15 @@
+node_modules/
+out/
+*.vsix
+.vscode-test/
+.nyc_output/
+coverage/
+.claude/
+.DS_Store
+swagger.json
+.gitignore
+.github/
+jest.config.js
+TESTING.md
+src/test/
+src/__mocks__/
