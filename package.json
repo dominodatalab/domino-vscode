@@ -2,7 +2,7 @@
   "name": "domino-data-lab-vscode-extension",
   "displayName": "Domino Data Lab ",
   "description": "VS Code extension for interacting with Domino Data Lab platform",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "publisher": "DominoDataLab",
   "icon": "icons/domino-logo-black.png",
   "author": {
@@ -549,7 +549,8 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run bundle",
+    "bundle": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --platform=node --minify",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run lint",
@@ -563,6 +564,7 @@
     "@typescript-eslint/eslint-plugin": "^5.45.0",
     "@typescript-eslint/parser": "^5.45.0",
     "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.27.4",
     "eslint": "^8.28.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.5",
