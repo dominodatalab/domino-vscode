@@ -13,3 +13,4 @@ TESTING.md
 tsconfig.json
 package-lock.json
 src/
+out/**/*.map
