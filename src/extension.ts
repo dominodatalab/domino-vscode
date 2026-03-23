@@ -116,6 +116,10 @@ function waitForDominoSshConfig(workspaceId: string, timeoutMs = 30000): Promise
 function addSshConfigEntry(workspaceId: string, workspaceName: string, port: number): void {
     const marker = `domino-vscode-extension:${workspaceId}`;
     const hostName = sanitizeHostname(workspaceName);
+    const identityFile = vscode.workspace.getConfiguration('domino').get<string>('sshIdentityFile', '~/.domino/host_keys/id_ecdsa').trim();
+    const identityLines = identityFile
+        ? [`    IdentityFile ${identityFile}`, `    IdentitiesOnly yes`]
+        : [];
     const entry = [
         `# ${marker}`,
         `Host ${hostName}`,
@@ -124,6 +128,7 @@ function addSshConfigEntry(workspaceId: string, workspaceName: string, port: num
         `    User ubuntu`,
         `    StrictHostKeyChecking no`,
         `    UserKnownHostsFile /dev/null`,
+        ...identityLines,
         `# ${marker}:end`,
         ''
     ].join('\n');
