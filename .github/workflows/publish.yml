@@ -59,10 +59,10 @@ jobs:
       # Uncomment the step below once you have completed the initial publish
       # and added the VSCE_PAT secret to this repository.
       #
-      # - name: Publish to Marketplace
-      #   run: npx vsce publish
-      #   env:
-      #     VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      - name: Publish to Marketplace
+        run: npx vsce publish
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
       - name: Compute short SHA
         if: always()
