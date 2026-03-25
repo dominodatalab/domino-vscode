@@ -1,67 +1,108 @@
-# Domino Data Lab VS Code Extension
+# Domino Data Lab — VS Code Extension
 
-This extension provides mechanisms to manage jobs and workspaces in your Domino Data Lab deployment.
+Manage Domino Data Lab jobs and workspaces without leaving your IDE. Authenticate once, browse your projects, launch and monitor jobs, and connect directly to remote workspaces over SSH.
+
+[![Install from VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Marketplace-Install-blue?logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=DominoDataLab.domino-data-lab-vscode-extension)
+[![Install from Open VSX](https://img.shields.io/badge/Open%20VSX-Install-purple?logo=eclipse)](https://open-vsx.org/extension/DominoDataLab/domino-data-lab-vscode-extension)
+
+---
+
+## Installation
+
+| Marketplace | Link |
+|---|---|
+| **VS Code Marketplace** (Azure) | [DominoDataLab.domino-data-lab-vscode-extension](https://marketplace.visualstudio.com/items?itemName=DominoDataLab.domino-data-lab-vscode-extension) |
+| **Open VSX Registry** | [DominoDataLab/domino-data-lab-vscode-extension](https://open-vsx.org/extension/DominoDataLab/domino-data-lab-vscode-extension) |
+
+---
 
 ## Features
 
-### Authentication & Connection
-- Secure API key-based authentication with Domino instance
+- **Connect to workspaces via SSH** — open a Remote-SSH window directly into a running Domino workspace
+- **Run jobs** — submit any file or custom command as a Domino job, with hardware tier and environment selection
+- **Manage projects** — browse, create, and switch projects from the sidebar
+- **Monitor workspaces & jobs** — real-time status with auto-refresh, pagination, and browser integration
 
-### Project Management
-- Create new projects directly from VS Code
-- View project details and ownership information
-- Automatic project switching with context updates
+---
 
-### Job Execution & Monitoring
-- **Run Custom Jobs**: Execute any command with hardware/environment selection
-- **File-Based Jobs**: Right-click any file to run it as a Domino job
-- **Real-time Monitoring**: Track job status with auto-refresh
-- **Pagination Support**: Browse through large job histories
-- **Browser Integration**: Open job results directly in Domino UI
+## Connect to Workspace
 
-### Workspace Management
-- Start and stop workspaces with one click
-- Commit workspace changes to project repository
-- Open workspaces directly in browser
-- Monitor workspace status and resource usage
+The headline feature of this extension is the ability to SSH directly into a running Domino workspace from VS Code, using the [Remote - SSH](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh) extension.
 
-## Usage
+> **Prerequisite:** The `dom` CLI must be installed and available on your `PATH`.
 
-### First Time Setup
-1. Open Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`)
-2. Run **"Domino: Authenticate with Domino"**
-3. Enter your Domino instance URL (e.g., `https://your-domino-instance.com`)
-4. Enter your Domino API key
+### How it works
 
-### Select a Project
-```
-Sidebar: "Domino Projects" → Click on project name
-OR Command Palette → "Domino: Select Project"
+1. Start a workspace from the **Domino Workspaces** sidebar panel (or the Command Palette).
+2. Once the workspace is running, right-click it and select **Connect SSH Tunnel**.
+3. The extension runs `dom connect` to establish an SSH tunnel to the workspace and automatically adds an entry to your `~/.ssh/config`.
+4. A new VS Code Remote-SSH window opens, connected to your workspace at `/mnt` by default.
+
+To disconnect, right-click the workspace and select **Disconnect SSH Tunnel**. The extension kills the tunnel process and cleans up the SSH config entry.
+
+### Background proxy mode
+
+By default the SSH tunnel runs in a visible VS Code terminal. Enable `domino.sshBackgroundProxy` to run the tunnel as a detached background process — it will survive VS Code being closed, and the extension will automatically reconnect on restart.
+
+```jsonc
+// settings.json
+{
+  "domino.sshBackgroundProxy": true
+}
 ```
 
-### Run Your First Job
+Tunnel logs are written to `~/.domino/vscode-extension/logs/<workspaceId>.log`.
+
+---
+
+## Getting Started
+
+### 1. Authenticate
+
+Open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and run **Domino: Authenticate with Domino**. Enter your Domino instance URL and API key.
+
+You can pre-configure the URL to skip the prompt:
+
+```jsonc
+// settings.json
+{
+  "domino.apiUrl": "https://your-domino-instance.com"
+}
 ```
-Option A: Right-click any Python/R file → "Run with Domino"
-Option B: Command Palette → "Domino: Run Job" → Enter command
-```
 
-This will default to the project defaults but allows you to override things such as hardware tier and compute environment
+### 2. Select a project
 
-### Start a Workspace
-```
-Sidebar: "Domino Workspaces" → Click ▶️ next to workspace
-OR Command Palette → "Domino: Start Workspace"
-```
+Click a project in the **Domino Projects** sidebar panel, or run **Domino: Select Project** from the Command Palette. A project must be selected before you can interact with jobs or workspaces.
 
-## Use Cases
+### 3. Run a job
 
-### SSHable workspaces
-With Dominos SSHable workspaces, you're now able to SSH directly into a Domino workspace from your local VS Code IDE using the [Remote - SSH](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh) extension.
+- **Right-click** any Python, R, Notebook, shell, or JS/TS file and choose **Run with Domino**
+- **Command Palette** → **Domino: Run Job** to enter a custom command
 
-Rather than going back and forth between IDE and browser, you can use this extension to sync files back into your workspace.
+Both options let you override the hardware tier and compute environment before submitting.
+
+### 4. Start a workspace
+
+In the **Domino Workspaces** panel click the play button next to any workspace, or run **Domino: Start Workspace** from the Command Palette.
+
+---
+
+## Configuration
+
+| Setting | Default | Description |
+|---|---|---|
+| `domino.apiUrl` | _(empty)_ | Domino instance URL. Set to skip the URL prompt on sign-in. |
+| `domino.oauthClientId` | `domino-connect-client` | Keycloak OAuth2 client ID. Contact your admin if the default doesn't work. |
+| `domino.autoRefreshEnabled` | `true` | Enable auto-refresh of jobs and workspaces. |
+| `domino.autoRefreshInterval` | `30000` | Refresh interval in milliseconds (5,000–300,000). |
+| `domino.sshAutoConnect` | `true` | Automatically open a Remote-SSH window after the tunnel is established. |
+| `domino.sshBackgroundProxy` | `false` | Run the SSH proxy as a background process independent of VS Code. |
+| `domino.sshIdentityFile` | `~/.domino/host_keys/id_ecdsa` | Path to the SSH private key used for workspace connections. |
+| `domino.workspaceDefaultDirectory` | `/mnt` | Working directory used when opening a Remote-SSH window. |
+
+---
 
 ## Support
 
-For issues and questions:
-- Submit issues via repository issue tracker
-
+- **Bug reports & feature requests:** [GitHub Issues](https://github.com/dominodatalab/domino-vscode/issues)
+- **Domino documentation:** [docs.dominodatalab.com](https://docs.dominodatalab.com)
