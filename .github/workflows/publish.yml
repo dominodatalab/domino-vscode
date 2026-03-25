@@ -8,7 +8,8 @@ name: Publish to VS Code Marketplace
 #   1. Run `npx vsce publish` locally to do the initial publish
 #   2. Generate a Personal Access Token in Azure DevOps with Marketplace (publish) scope
 #   3. Add it as a GitHub Actions secret named VSCE_PAT
-#   4. Uncomment the `publish` step below
+#   4. Generate an Open VSX access token at https://open-vsx.org/user-settings/tokens
+#   5. Add it as a GitHub Actions secret named OVSX_PAT
 #
 # Slack notifications require a SLACK_WEBHOOK_URL secret (incoming webhook URL).
 
@@ -59,10 +60,13 @@ jobs:
       # Uncomment the step below once you have completed the initial publish
       # and added the VSCE_PAT secret to this repository.
       #
-      - name: Publish to Marketplace
+      - name: Publish to VS Code Marketplace
         run: npx vsce publish
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to Open VSX
+        run: npx ovsx publish --pat ${{ secrets.OVSX_PAT }}
 
       - name: Compute short SHA
         if: always()
@@ -94,7 +98,11 @@ jobs:
                     },
                     {
                       "type": "mrkdwn",
-                      "text": "*Marketplace:*\n<https://marketplace.visualstudio.com/items?itemName=dominodatalab.domino-data-lab-vscode-extension|View on VS Code Marketplace>"
+                      "text": "*VS Code Marketplace:*\n<https://marketplace.visualstudio.com/items?itemName=dominodatalab.domino-data-lab-vscode-extension|View on VS Code Marketplace>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Open VSX:*\n<https://open-vsx.org/extension/dominodatalab/domino-data-lab-vscode-extension|View on Open VSX>"
                     }
                   ]
                 }
