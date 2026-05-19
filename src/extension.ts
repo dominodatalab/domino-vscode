@@ -116,6 +116,7 @@ function waitForDominoSshConfig(workspaceId: string, timeoutMs = 30000): Promise
 function addSshConfigEntry(workspaceId: string, workspaceName: string, port: number): void {
     const marker = `domino-vscode-extension:${workspaceId}`;
     const hostName = sanitizeHostname(workspaceName);
+    const config = vscode.workspace.getConfiguration('domino');
     const identityFile = vscode.workspace.getConfiguration('domino').get<string>('sshIdentityFile', '~/.domino/host_keys/id_ecdsa').trim();
     const identityLines = identityFile
         ? [`    IdentityFile ${identityFile}`, `    IdentitiesOnly yes`]
@@ -125,7 +126,7 @@ function addSshConfigEntry(workspaceId: string, workspaceName: string, port: num
         `Host ${hostName}`,
         `    HostName localhost`,
         `    Port ${port}`,
-        `    User ubuntu`,
+        `    User ${config.get<string>('sshUser', 'ubuntu')}`,
         `    StrictHostKeyChecking no`,
         `    UserKnownHostsFile /dev/null`,
         ...identityLines,
@@ -331,7 +332,7 @@ async function connectSSH(workspaceItem?: any) {
         const config = vscode.workspace.getConfiguration('domino');
         const backgroundMode = config.get<boolean>('sshBackgroundProxy', false);
 
-        const domArgs = ['connect', workspaceId, `--domino-api-host=${apiUrl}`, '-l', 'ubuntu'];
+        const domArgs = ['connect', workspaceId, `--domino-api-host=${apiUrl}`, '-l', config.get<string>('sshUser', 'ubuntu')];
         let port: number;
 
         if (backgroundMode) {
@@ -368,7 +369,7 @@ async function connectSSH(workspaceItem?: any) {
 
         } else {
             // --- Terminal mode: run dom connect in a visible VSCode terminal (default) ---
-            const command = `dom connect ${workspaceId} --domino-api-host=${apiUrl} -l ubuntu`;
+            const command = `dom connect ${workspaceId} --domino-api-host=${apiUrl} -l ${config.get<string>('sshUser', 'ubuntu')}`;
             console.log(`Running in terminal: ${command}`);
 
             const terminal = vscode.window.createTerminal({ name: `SSH: ${workspaceName}` });
@@ -406,7 +407,7 @@ async function connectSSH(workspaceItem?: any) {
                 if (action === 'Connect Remote-SSH') {
                     openRemoteSshWindow(sshHost, port);
                 } else if (action === 'Copy SSH Command') {
-                    vscode.env.clipboard.writeText(`ssh -p ${port} ubuntu@localhost`);
+                    vscode.env.clipboard.writeText(`ssh -p ${port} ${config.get<string>('sshUser', 'ubuntu')}@localhost`);
                     vscode.window.showInformationMessage('SSH command copied to clipboard');
                 }
             });
@@ -453,13 +454,13 @@ async function openRemoteSshWindow(hostName: string, port: number): Promise<void
             'ms-vscode-remote.remote-ssh'
         );
     } else if (action === 'Copy SSH Command') {
-        vscode.env.clipboard.writeText(`ssh -p ${port} ubuntu@localhost`);
+        vscode.env.clipboard.writeText(`ssh -p ${port} ${config.get<string>('sshUser', 'ubuntu')}@localhost`);
         vscode.window.showInformationMessage('SSH command copied to clipboard');
     }
 }
 
 function showTunnelDetails(workspaceId: string, port: number): void {
-    const sshCommand = `ssh -p ${port} ubuntu@localhost`;
+    const sshCommand = `ssh -p ${port} ${config.get<string>('sshUser', 'ubuntu')}@localhost`;
     vscode.window.showInformationMessage(
         `SSH Tunnel — Port: ${port} | Host: ${workspaceId}`,
         'Copy SSH Command',
