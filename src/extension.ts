@@ -460,6 +460,7 @@ async function openRemoteSshWindow(hostName: string, port: number): Promise<void
 }
 
 function showTunnelDetails(workspaceId: string, port: number): void {
+    const config = vscode.workspace.getConfiguration('domino'); 
     const sshCommand = `ssh -p ${port} ${config.get<string>('sshUser', 'ubuntu')}@localhost`;
     vscode.window.showInformationMessage(
         `SSH Tunnel — Port: ${port} | Host: ${workspaceId}`,
