@@ -2,7 +2,7 @@
   "name": "domino-data-lab-vscode-extension",
   "displayName": "Domino Data Lab ",
   "description": "VS Code extension for interacting with Domino Data Lab platform",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "publisher": "DominoDataLab",
   "icon": "icons/domino-logo-black.png",
   "author": {
@@ -11,6 +11,9 @@
   "contributors": [
     {
       "name": "Nick Jablonski"
+    },
+    {
+      "name": "Wasantha Gamage"
     }
   ],
   "engines": {
@@ -549,6 +552,11 @@
           "type": "string",
           "default": "~/.domino/host_keys/id_ecdsa",
           "description": "Path to the SSH identity file (private key) to use when connecting to Domino workspaces. Written as IdentityFile in the SSH config block, with IdentitiesOnly yes to prevent other keys from being tried. Set to an empty string to omit these directives and rely on SSH's default key discovery."
+        },
+        "domino.sshUser": {
+          "type": "string",
+          "default": "ubuntu",
+          "markdownDescription": "SSH username to use when connecting to Domino workspaces. Standard Ubuntu-based environments use `ubuntu`. RHEL/UBI8 environments (including custom images where the workspace user is `domino`) require this to be set to `domino`."
         }
       }
     }
