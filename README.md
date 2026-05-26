@@ -53,19 +53,6 @@ By default the SSH tunnel runs in a visible VS Code terminal. Enable `domino.ssh
 
 Tunnel logs are written to `~/.domino/vscode-extension/logs/<workspaceId>.log`.
 
-### Custom SSH username (RHEL / UBI8 environments)
-
-By default the extension connects as `ubuntu`, which is correct for standard Domino Ubuntu-based compute environments. If your organisation uses **RHEL or UBI8-based images** (where the workspace user is `domino` rather than `ubuntu`), set `domino.sshUser` to match:
-
-```jsonc
-// settings.json
-{
-  "domino.sshUser": "domino"
-}
-```
-
-This setting controls the username in all SSH-related code paths: the `dom connect -l` flag, the `User` field written to `~/.ssh/config`, and the SSH command shown in workspace tooltips and the copy-to-clipboard action. The default is `ubuntu`, so existing Ubuntu-based environments require no change.
-
 ---
 
 ## Getting Started
@@ -111,7 +98,6 @@ In the **Domino Workspaces** panel click the play button next to any workspace, 
 | `domino.sshAutoConnect` | `true` | Automatically open a Remote-SSH window after the tunnel is established. |
 | `domino.sshBackgroundProxy` | `false` | Run the SSH proxy as a background process independent of VS Code. |
 | `domino.sshIdentityFile` | `~/.domino/host_keys/id_ecdsa` | Path to the SSH private key used for workspace connections. |
-| `domino.sshUser` | `ubuntu` | SSH username for workspace connections. Set to `domino` for RHEL/UBI8-based compute environments. |
 | `domino.workspaceDefaultDirectory` | `/mnt` | Working directory used when opening a Remote-SSH window. |
 
 ---
