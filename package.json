@@ -2,7 +2,7 @@
   "name": "domino-data-lab-vscode-extension",
   "displayName": "Domino Data Lab ",
   "description": "VS Code extension for interacting with Domino Data Lab platform",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "publisher": "DominoDataLab",
   "icon": "icons/domino-logo-black.png",
   "author": {
