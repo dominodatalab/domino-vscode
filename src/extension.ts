@@ -8,6 +8,7 @@ import { DominoApiClient } from './dominoApiClient';
 import { ProjectProvider } from './projectProvider';
 import { JobProvider } from './jobProvider';
 import { WorkspaceProvider } from './workspaceProvider';
+import { logger, initLogger } from './logger';
 import {
     TokenSet,
     performOAuthFlow,
@@ -344,7 +345,7 @@ async function connectSSH(workspaceItem?: any) {
             const logFile = path.join(logDir, `${workspaceId}.log`);
             const logFd = fs.openSync(logFile, 'a');
 
-            console.log(`Spawning background process: dom ${domArgs.join(' ')}`);
+            logger.info(`Spawning background process: dom ${domArgs.join(' ')}`);
             const proc = child_process.spawn('dom', domArgs, {
                 detached: true,
                 stdio: ['ignore', logFd, logFd],
@@ -370,7 +371,7 @@ async function connectSSH(workspaceItem?: any) {
         } else {
             // --- Terminal mode: run dom connect in a visible VSCode terminal (default) ---
             const command = `dom connect ${workspaceId} --domino-api-host=${apiUrl} -l ${config.get<string>('sshUser', 'ubuntu')}`;
-            console.log(`Running in terminal: ${command}`);
+            logger.info(`Running in terminal: ${command}`);
 
             const terminal = vscode.window.createTerminal({ name: `SSH: ${workspaceName}` });
             terminal.show();
@@ -428,7 +429,7 @@ async function openRemoteSshWindow(hostName: string, port: number): Promise<void
         await vscode.commands.executeCommand('vscode.openFolder', remoteUri, { forceNewWindow: true });
         return;
     } catch (err) {
-        console.log('vscode.openFolder with remote URI failed, trying fallback:', err);
+        logger.info('vscode.openFolder with remote URI failed, trying fallback:', err);
     }
 
     try {
@@ -438,7 +439,7 @@ async function openRemoteSshWindow(hostName: string, port: number): Promise<void
         });
         return;
     } catch (err) {
-        console.log('opensshremote.openEmptyWindow failed, offering to install:', err);
+        logger.info('opensshremote.openEmptyWindow failed, offering to install:', err);
     }
 
     // Both failed — offer to install Remote-SSH
@@ -614,7 +615,7 @@ async function selectProject(projectItem?: any) {
     try {
         // If called from tree view with a project item, use it directly
         if (projectItem && projectItem.projectId && projectItem.label) {
-            console.log('Selecting project from tree view:', projectItem.label);
+            logger.info('Selecting project from tree view:', projectItem.label);
             await dominoClient.setCurrentProject(projectItem.projectId, projectItem.label, projectItem.ownerUsername);
             vscode.window.showInformationMessage(`Selected project: ${projectItem.label}`);
             
@@ -622,7 +623,7 @@ async function selectProject(projectItem?: any) {
             updateStatusBar();
 
             // Refresh all views
-            console.log('Refreshing all views after project selection');
+            logger.info('Refreshing all views after project selection');
             jobProvider.refresh();
             workspaceProvider.refresh();
 
@@ -645,7 +646,7 @@ async function selectProject(projectItem?: any) {
         // If only one project, select it automatically
         if (projects.length === 1) {
             const project = projects[0];
-            console.log('Only one project available, auto-selecting:', project.name);
+            logger.info('Only one project available, auto-selecting:', project.name);
             
             await dominoClient.setCurrentProject(project.id, project.name, project.ownerUsername);
             vscode.window.showInformationMessage(`Auto-selected project: ${project.name}`);
@@ -654,7 +655,7 @@ async function selectProject(projectItem?: any) {
             updateStatusBar();
 
             // Refresh all views
-            console.log('Refreshing all views after auto project selection');
+            logger.info('Refreshing all views after auto project selection');
             jobProvider.refresh();
             workspaceProvider.refresh();
 
@@ -685,7 +686,7 @@ async function selectProject(projectItem?: any) {
             updateStatusBar();
             
             // Manually refresh all views to ensure they update
-            console.log('Refreshing all views after project selection');
+            logger.info('Refreshing all views after project selection');
             jobProvider.refresh();
             workspaceProvider.refresh();
 
@@ -769,22 +770,22 @@ async function runJob(prefilledCommand?: string, prefilledTitle?: string) {
                 // Try to get both options and project settings
                 const [hardwareTiers, environments, projectSettings] = await Promise.all([
                     dominoClient.getHardwareTiers().catch(error => {
-                        console.warn('Failed to get hardware tiers:', error);
+                        logger.warn('Failed to get hardware tiers:', error);
                         return [];
                     }),
                     dominoClient.getEnvironments().catch(error => {
-                        console.warn('Failed to get environments:', error);
+                        logger.warn('Failed to get environments:', error);
                         return [];
                     }),
                     dominoClient.getProjectSettings().catch(error => {
-                        console.warn('Failed to get project settings:', error);
+                        logger.warn('Failed to get project settings:', error);
                         return null;
                     })
                 ]);
                 
                 return { hardwareTiers, environments, projectSettings };
             } catch (error) {
-                console.warn('Could not load configuration options:', error);
+                logger.warn('Could not load configuration options:', error);
                 return { hardwareTiers: [], environments: [], projectSettings: null };
             }
         });
@@ -927,7 +928,7 @@ async function runJob(prefilledCommand?: string, prefilledTitle?: string) {
         jobProvider.refresh();
 
     } catch (error) {
-        console.error('Run job error:', error);
+        logger.error('Run job error:', error);
         vscode.window.showErrorMessage(`Failed to run job: ${error}`);
     }
 }
@@ -1009,22 +1010,22 @@ async function runJobWithFile(fileUri?: vscode.Uri) {
             try {
                 const [hardwareTiers, environments, projectSettings] = await Promise.all([
                     dominoClient.getHardwareTiers().catch(error => {
-                        console.warn('Failed to get hardware tiers:', error);
+                        logger.warn('Failed to get hardware tiers:', error);
                         return [];
                     }),
                     dominoClient.getEnvironments().catch(error => {
-                        console.warn('Failed to get environments:', error);
+                        logger.warn('Failed to get environments:', error);
                         return [];
                     }),
                     dominoClient.getProjectSettings().catch(error => {
-                        console.warn('Failed to get project settings:', error);
+                        logger.warn('Failed to get project settings:', error);
                         return null;
                     })
                 ]);
                 
                 return { hardwareTiers, environments, projectSettings };
             } catch (error) {
-                console.warn('Could not load configuration options:', error);
+                logger.warn('Could not load configuration options:', error);
                 return { hardwareTiers: [], environments: [], projectSettings: null };
             }
         });
@@ -1141,7 +1142,7 @@ async function runJobWithFile(fileUri?: vscode.Uri) {
         jobProvider.refresh();
 
     } catch (error) {
-        console.error('Run job with file error:', error);
+        logger.error('Run job with file error:', error);
         vscode.window.showErrorMessage(`Failed to run job: ${error}`);
     }
 }
@@ -1315,11 +1316,11 @@ async function openWorkspace(workspaceItem?: any) {
         // Construct the workspace URL
         const workspaceUrl = `https://${host}/workspace-session/${username}/${projectName}?owner=${username}&projectName=${projectName}&runId=${executionId}&workspaceId=${workspaceId}`;
         
-        console.log('Opening workspace URL:', workspaceUrl);
+        logger.info('Opening workspace URL:', workspaceUrl);
         vscode.env.openExternal(vscode.Uri.parse(workspaceUrl));
         
     } catch (error) {
-        console.error('Failed to open workspace:', error);
+        logger.error('Failed to open workspace:', error);
         vscode.window.showErrorMessage(`Failed to open workspace: ${error}`);
     }
 }
@@ -1397,21 +1398,21 @@ async function createNewWorkspace() {
             try {
                 const [hardwareTiers, environments, projectSettings] = await Promise.all([
                     dominoClient.getHardwareTiers().catch(error => {
-                        console.warn('Failed to get hardware tiers:', error);
+                        logger.warn('Failed to get hardware tiers:', error);
                         return [];
                     }),
                     dominoClient.getEnvironments().catch(error => {
-                        console.warn('Failed to get environments:', error);
+                        logger.warn('Failed to get environments:', error);
                         return [];
                     }),
                     dominoClient.getProjectSettings().catch(error => {
-                        console.warn('Failed to get project settings:', error);
+                        logger.warn('Failed to get project settings:', error);
                         return null;
                     })
                 ]);
                 return { hardwareTiers, environments, projectSettings };
             } catch (error) {
-                console.warn('Could not load configuration options:', error);
+                logger.warn('Could not load configuration options:', error);
                 return { hardwareTiers: [], environments: [], projectSettings: null };
             }
         });
@@ -1458,7 +1459,7 @@ async function createNewWorkspace() {
             try {
                 return await dominoClient.getAvailableToolsForEnvironment(selectedEnv.value);
             } catch (error) {
-                console.warn('Failed to get available tools:', error);
+                logger.warn('Failed to get available tools:', error);
                 return [];
             }
         });
@@ -1556,14 +1557,14 @@ async function createNewWorkspace() {
         workspaceProvider.refresh();
 
     } catch (error) {
-        console.error('Create workspace error:', error);
+        logger.error('Create workspace error:', error);
         vscode.window.showErrorMessage(`Failed to create workspace: ${error}`);
     }
 }
 
 async function openJobInBrowser(jobItem?: any) {
     try {
-        console.log('Opening job in browser with item:', jobItem);
+        logger.info('Opening job in browser with item:', jobItem);
         
         // Handle both old format (separate parameters) and new format (job item object)
         let jobId: string;
@@ -1581,7 +1582,7 @@ async function openJobInBrowser(jobItem?: any) {
             username = jobItem.ownerUsername || jobItem.username;
             runId = jobItem.runId || jobItem.jobId || jobItem.id;
             
-            console.log('Extracted job details:', { jobId, username, runId });
+            logger.info('Extracted job details:', { jobId, username, runId });
         } else {
             vscode.window.showWarningMessage('Please select a job from the list');
             return;
@@ -1609,7 +1610,7 @@ async function openJobInBrowser(jobItem?: any) {
 
         // Fallback username if not available
         if (!username || username === 'Unknown user') {
-            console.warn('Username not available, trying to get from project info or using fallback');
+            logger.warn('Username not available, trying to get from project info or using fallback');
             // You might want to fetch this from the project or user info
             username = 'unknown'; // This should be replaced with actual logic to get the username
         }
@@ -1620,14 +1621,14 @@ async function openJobInBrowser(jobItem?: any) {
         // Format 1: Standard job results page
         jobUrl = `${apiUrl}/jobs/${username}/${dominoClient.currentProjectName}/${runId}/results`;
         
-        console.log('Opening job URL:', jobUrl);
-        console.log('URL components:', { apiUrl, username, projectName: dominoClient.currentProjectName, runId });
+        logger.info('Opening job URL:', jobUrl);
+        logger.info('URL components:', { apiUrl, username, projectName: dominoClient.currentProjectName, runId });
         
         // Open the URL
         vscode.env.openExternal(vscode.Uri.parse(jobUrl));
         
     } catch (error) {
-        console.error('Failed to open job:', error);
+        logger.error('Failed to open job:', error);
         vscode.window.showErrorMessage(`Failed to open job: ${error}`);
     }
 }
@@ -1658,11 +1659,11 @@ async function viewJobs() {
 // New functions for enhanced job functionality
 async function loadMoreJobs() {
     try {
-        console.log('Loading more jobs...');
+        logger.info('Loading more jobs...');
         await jobProvider.loadMore();
         vscode.window.showInformationMessage('Loading more jobs...');
     } catch (error) {
-        console.error('Load more jobs error:', error);
+        logger.error('Load more jobs error:', error);
         vscode.window.showErrorMessage(`Failed to load more jobs: ${error}`);
     }
 }
@@ -1891,7 +1892,7 @@ async function checkAuthentication() {
             activeTokens = await refreshAccessToken(tokens, clientId);
             await storeTokens(secretStorage, activeTokens);
         } catch (error) {
-            console.log('Stored tokens expired and refresh failed — clearing:', error);
+            logger.info('Stored tokens expired and refresh failed — clearing:', error);
             await clearTokens(secretStorage);
             vscode.commands.executeCommand('setContext', 'domino:authenticated', false);
             return;
@@ -1901,7 +1902,7 @@ async function checkAuthentication() {
     try {
         await dominoClient.authenticate(activeTokens.dominoBaseUrl, activeTokens.accessToken);
     } catch (error) {
-        console.log('Stored tokens are invalid — clearing:', error);
+        logger.info('Stored tokens are invalid — clearing:', error);
         await clearTokens(secretStorage);
         vscode.commands.executeCommand('setContext', 'domino:authenticated', false);
         return;
@@ -1909,7 +1910,7 @@ async function checkAuthentication() {
 
     scheduleTokenRefresh(activeTokens);
     vscode.commands.executeCommand('setContext', 'domino:authenticated', true);
-    console.log('Auto-authenticated with stored OAuth tokens');
+    logger.info('Auto-authenticated with stored OAuth tokens');
 
     // Fetch current user for status bar
     try {
@@ -1983,16 +1984,39 @@ const AUTO_REFRESH_INTERVAL = 30000; // 30 seconds
 // OAuth token refresh timer
 let tokenRefreshTimer: NodeJS.Timeout | undefined;
 
+// Wrap a command handler so every invocation is logged: when it starts (with
+// its arguments), how long it took to complete, and any error it throws. This
+// gives a single audit trail of every action the user triggers.
+function registerLoggedCommand(
+    name: string,
+    handler: (...args: any[]) => any
+): vscode.Disposable {
+    return vscode.commands.registerCommand(name, async (...args: any[]) => {
+        logger.info(`Command invoked: ${name}`, ...(args.length ? args : []));
+        const start = Date.now();
+        try {
+            const result = await handler(...args);
+            logger.info(`Command completed: ${name} (${Date.now() - start}ms)`);
+            return result;
+        } catch (error) {
+            logger.error(`Command failed: ${name} (${Date.now() - start}ms)`, error);
+            throw error;
+        }
+    });
+}
+
 export function activate(context: vscode.ExtensionContext) {
-    console.log('Domino Data Lab extension is now active!');
-    
+    // Initialize logging first so every subsequent action is captured.
+    context.subscriptions.push(initLogger());
+    logger.info('Domino Data Lab extension is now active!');
+
     // Log extension host type for debugging
     const extensionKind = vscode.extensions.getExtension('your-publisher-name.domino-datalab')?.extensionKind;
-    console.log('Extension running in:', extensionKind === vscode.ExtensionKind.UI ? 'Local (UI)' : 'Remote (Workspace)');
-    
+    logger.info('Extension running in:', extensionKind === vscode.ExtensionKind.UI ? 'Local (UI)' : 'Remote (Workspace)');
+
     // Check if we're in a remote workspace
     const isRemote = vscode.env.remoteName !== undefined;
-    console.log('Remote workspace detected:', isRemote, 'Remote name:', vscode.env.remoteName);
+    logger.info('Remote workspace detected:', isRemote, 'Remote name:', vscode.env.remoteName);
 
     // Store secret storage for credential persistence
     secretStorage = context.secrets;
@@ -2013,42 +2037,44 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.registerTreeDataProvider('dominoJobs', jobProvider);
     vscode.window.registerTreeDataProvider('dominoWorkspaces', workspaceProvider);
 
-    // Register commands
+    // Register commands. Each is wrapped via registerLoggedCommand so every
+    // invocation, completion, and error is logged to the developer console
+    // and the Domino output channel.
     const commands = [
-        vscode.commands.registerCommand('domino.authenticate', authenticate),
-        vscode.commands.registerCommand('domino.selectProject', selectProject),
-        vscode.commands.registerCommand('domino.createProject', createProject),
-        vscode.commands.registerCommand('domino.runJob', runJob),
-        vscode.commands.registerCommand('domino.viewJobs', viewJobs),
-        vscode.commands.registerCommand('domino.startWorkspace', startWorkspace),
-        vscode.commands.registerCommand('domino.stopWorkspace', stopWorkspace),
-        vscode.commands.registerCommand('domino.openWorkspace', openWorkspace),
-        vscode.commands.registerCommand('domino.commitWorkspace', commitWorkspace),
-        vscode.commands.registerCommand('domino.createWorkspace', createNewWorkspace),
-        vscode.commands.registerCommand('domino.openJobInBrowser', openJobInBrowser),
-        vscode.commands.registerCommand('domino.refreshProjects', () => projectProvider.refresh()),
-        vscode.commands.registerCommand('domino.refreshJobs', () => jobProvider.refresh()),
-        vscode.commands.registerCommand('domino.refreshWorkspaces', () => workspaceProvider.refresh()),
+        registerLoggedCommand('domino.authenticate', authenticate),
+        registerLoggedCommand('domino.selectProject', selectProject),
+        registerLoggedCommand('domino.createProject', createProject),
+        registerLoggedCommand('domino.runJob', runJob),
+        registerLoggedCommand('domino.viewJobs', viewJobs),
+        registerLoggedCommand('domino.startWorkspace', startWorkspace),
+        registerLoggedCommand('domino.stopWorkspace', stopWorkspace),
+        registerLoggedCommand('domino.openWorkspace', openWorkspace),
+        registerLoggedCommand('domino.commitWorkspace', commitWorkspace),
+        registerLoggedCommand('domino.createWorkspace', createNewWorkspace),
+        registerLoggedCommand('domino.openJobInBrowser', openJobInBrowser),
+        registerLoggedCommand('domino.refreshProjects', () => projectProvider.refresh()),
+        registerLoggedCommand('domino.refreshJobs', () => jobProvider.refresh()),
+        registerLoggedCommand('domino.refreshWorkspaces', () => workspaceProvider.refresh()),
         // New commands for enhanced job functionality
-        vscode.commands.registerCommand('domino.loadMoreJobs', loadMoreJobs),
-        vscode.commands.registerCommand('domino.startJobFromPanel', startJobFromPanel),
+        registerLoggedCommand('domino.loadMoreJobs', loadMoreJobs),
+        registerLoggedCommand('domino.startJobFromPanel', startJobFromPanel),
         // Auto-refresh commands
-        vscode.commands.registerCommand('domino.toggleAutoRefresh', toggleAutoRefresh),
-        vscode.commands.registerCommand('domino.enableAutoRefresh', enableAutoRefresh),
-        vscode.commands.registerCommand('domino.disableAutoRefresh', disableAutoRefresh),
+        registerLoggedCommand('domino.toggleAutoRefresh', toggleAutoRefresh),
+        registerLoggedCommand('domino.enableAutoRefresh', enableAutoRefresh),
+        registerLoggedCommand('domino.disableAutoRefresh', disableAutoRefresh),
         // File context menu command
-        vscode.commands.registerCommand('domino.runJobWithFile', runJobWithFile),
+        registerLoggedCommand('domino.runJobWithFile', runJobWithFile),
         // SSH tunnel commands
-        vscode.commands.registerCommand('domino.connectSSH', connectSSH),
-        vscode.commands.registerCommand('domino.disconnectSSH', disconnectSSH),
+        registerLoggedCommand('domino.connectSSH', connectSSH),
+        registerLoggedCommand('domino.disconnectSSH', disconnectSSH),
         // Auth commands
-        vscode.commands.registerCommand('domino.signOut', signOut),
-        vscode.commands.registerCommand('domino.copyJobId', copyJobId),
-        vscode.commands.registerCommand('domino.copyWorkspaceId', copyWorkspaceId),
-        vscode.commands.registerCommand('domino.openProjectInBrowser', openProjectInBrowser),
-        vscode.commands.registerCommand('domino.rerunJob', rerunJob),
-        vscode.commands.registerCommand('domino.viewJobLogs', viewJobLogs),
-        vscode.commands.registerCommand('domino.cancelJob', cancelJob),
+        registerLoggedCommand('domino.signOut', signOut),
+        registerLoggedCommand('domino.copyJobId', copyJobId),
+        registerLoggedCommand('domino.copyWorkspaceId', copyWorkspaceId),
+        registerLoggedCommand('domino.openProjectInBrowser', openProjectInBrowser),
+        registerLoggedCommand('domino.rerunJob', rerunJob),
+        registerLoggedCommand('domino.viewJobLogs', viewJobLogs),
+        registerLoggedCommand('domino.cancelJob', cancelJob),
     ];
 
     context.subscriptions.push(...commands);
@@ -2119,20 +2145,20 @@ function scheduleTokenRefresh(tokens: TokenSet): void {
 
     const expiresAt = new Date(tokens.expiresAt).toLocaleTimeString();
     const refreshAt = new Date(Date.now() + refreshIn).toLocaleTimeString();
-    console.log(`[Domino auth] Token expires at ${expiresAt}. Refresh scheduled in ${Math.round(refreshIn / 1000)}s (at ${refreshAt}).`);
+    logger.info(`[Domino auth] Token expires at ${expiresAt}. Refresh scheduled in ${Math.round(refreshIn / 1000)}s (at ${refreshAt}).`);
 
     tokenRefreshTimer = setTimeout(async () => {
-        console.log('[Domino auth] Starting background token refresh...');
+        logger.info('[Domino auth] Starting background token refresh...');
         try {
             const config = vscode.workspace.getConfiguration('domino');
             const clientId = config.get<string>('oauthClientId', 'domino-connect-client');
             const newTokens = await refreshAccessToken(tokens, clientId);
             await storeTokens(secretStorage, newTokens);
             dominoClient.updateAccessToken(newTokens.accessToken);
-            console.log(`[Domino auth] Token refreshed successfully. New token expires at ${new Date(newTokens.expiresAt).toLocaleTimeString()}.`);
+            logger.info(`[Domino auth] Token refreshed successfully. New token expires at ${new Date(newTokens.expiresAt).toLocaleTimeString()}.`);
             scheduleTokenRefresh(newTokens);
         } catch (error) {
-            console.error('[Domino auth] Background token refresh failed:', error);
+            logger.error('[Domino auth] Background token refresh failed:', error);
             await clearTokens(secretStorage);
             stopAutoRefresh();
             vscode.commands.executeCommand('setContext', 'domino:authenticated', false);
@@ -2156,17 +2182,17 @@ function startAutoRefresh() {
         return;
     }
 
-    console.log('Starting auto-refresh timer (30 seconds)');
+    logger.info('Starting auto-refresh timer (30 seconds)');
     
     autoRefreshTimer = setInterval(() => {
         if (dominoClient.currentProjectId && isAutoRefreshEnabled) {
-            console.log('Auto-refreshing jobs and workspaces...');
+            logger.info('Auto-refreshing jobs and workspaces...');
             
             try {
                 jobProvider.refresh();
                 workspaceProvider.refresh();
             } catch (error) {
-                console.error('Error during auto-refresh:', error);
+                logger.error('Error during auto-refresh:', error);
             }
         }
     }, AUTO_REFRESH_INTERVAL);
@@ -2174,7 +2200,7 @@ function startAutoRefresh() {
 
 function stopAutoRefresh() {
     if (autoRefreshTimer) {
-        console.log('Stopping auto-refresh timer');
+        logger.info('Stopping auto-refresh timer');
         clearInterval(autoRefreshTimer);
         autoRefreshTimer = undefined;
     }
