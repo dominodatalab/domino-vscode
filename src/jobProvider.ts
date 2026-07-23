@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { logger } from './logger';
 import { DominoApiClient } from './dominoApiClient';
 
 // Union type for all tree items
@@ -15,11 +16,11 @@ export class JobProvider implements vscode.TreeDataProvider<JobTreeItem> {
     private readonly pageSize: number = 20;
 
     constructor(private dominoClient: DominoApiClient) {
-        console.log('JobProvider: Constructor called');
+        logger.info('JobProvider: Constructor called');
     }
 
     refresh(): void {
-        console.log('JobProvider: Refresh called - resetting pagination');
+        logger.info('JobProvider: Refresh called - resetting pagination');
         this.currentOffset = 0; // Reset pagination
         this.jobs = []; // Clear existing jobs
         this.hasMore = false; // Reset hasMore flag
@@ -28,13 +29,13 @@ export class JobProvider implements vscode.TreeDataProvider<JobTreeItem> {
     }
 
     async loadMore(): Promise<void> {
-        console.log('JobProvider: Load more called');
+        logger.info('JobProvider: Load more called');
         this.currentOffset += this.pageSize;
         this._onDidChangeTreeData.fire();
     }
 
     getTreeItem(element: JobTreeItem): vscode.TreeItem {
-        console.log('JobProvider: getTreeItem called for:', element.label);
+        logger.info('JobProvider: getTreeItem called for:', element.label);
         return element;
     }
 
@@ -45,33 +46,33 @@ export class JobProvider implements vscode.TreeDataProvider<JobTreeItem> {
             }
 
             if (!this.dominoClient.currentProjectId) {
-                console.log('No project selected for jobs');
+                logger.info('No project selected for jobs');
                 return [
                     new JobHeaderItem('Select a project to view jobs', 'project-needed'),
                     new JobActionItem('Start New Job', 'start-job', 'Start a new job in this project', 'play')
                 ];
             }
 
-            console.log('JobProvider: Getting jobs...');
+            logger.info('JobProvider: Getting jobs...');
             
             // Load jobs for current page
             const result = await this.dominoClient.getJobs(this.pageSize, this.currentOffset);
-            console.log(`JobProvider: API returned ${result.jobs.length} jobs, offset: ${this.currentOffset}, total available: ${result.total}`);
+            logger.info(`JobProvider: API returned ${result.jobs.length} jobs, offset: ${this.currentOffset}, total available: ${result.total}`);
             
             // If this is a fresh load (offset 0), replace the jobs array
             if (this.currentOffset === 0) {
                 this.jobs = [...result.jobs]; // Use spread operator to ensure new array
-                console.log(`JobProvider: Fresh load, set jobs array to ${this.jobs.length} items`);
+                logger.info(`JobProvider: Fresh load, set jobs array to ${this.jobs.length} items`);
             } else {
                 // Append to existing jobs
                 this.jobs.push(...result.jobs);
-                console.log(`JobProvider: Appended jobs, total now: ${this.jobs.length}`);
+                logger.info(`JobProvider: Appended jobs, total now: ${this.jobs.length}`);
             }
             
             this.hasMore = result.hasMore;
             this.total = result.total || 0;
             
-            console.log('JobProvider: Final state:', {
+            logger.info('JobProvider: Final state:', {
                 displayingJobs: this.jobs.length,
                 hasMore: this.hasMore,
                 total: this.total,
@@ -104,7 +105,7 @@ export class JobProvider implements vscode.TreeDataProvider<JobTreeItem> {
 
             // Add job items
             const jobItems = this.jobs.map((job, index) => {
-                console.log(`Processing job ${index + 1}:`, {
+                logger.info(`Processing job ${index + 1}:`, {
                     id: job.id,
                     number: job.number,
                     title: job.title,
@@ -177,19 +178,19 @@ export class JobProvider implements vscode.TreeDataProvider<JobTreeItem> {
             
             items.push(...jobItems);
             
-            console.log(`JobProvider: Created ${jobItems.length} job items from ${this.jobs.length} jobs`);
+            logger.info(`JobProvider: Created ${jobItems.length} job items from ${this.jobs.length} jobs`);
             
             // Add "Load More" button if there are more jobs
             if (this.hasMore) {
                 const remaining = this.total - this.jobs.length;
                 items.push(new LoadMoreItem(`📥 Load ${Math.min(remaining, this.pageSize)} more (${remaining} remaining)`));
-                console.log(`JobProvider: Added load more button, ${remaining} jobs remaining`);
+                logger.info(`JobProvider: Added load more button, ${remaining} jobs remaining`);
             }
             
-            console.log(`JobProvider: Returning ${items.length} total items to display`);
+            logger.info(`JobProvider: Returning ${items.length} total items to display`);
             return items;
         } catch (error) {
-            console.error('JobProvider error:', error);
+            logger.error('JobProvider error:', error);
             return [
                 new JobHeaderItem('Error loading jobs', 'error'),
                 new JobActionItem('Start New Job', 'start-job', 'Start a new job in this project', 'play'),

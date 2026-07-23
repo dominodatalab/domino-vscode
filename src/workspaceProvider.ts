@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { logger } from './logger';
 import { DominoApiClient } from './dominoApiClient';
 
 // Union type for workspace tree items
@@ -12,16 +13,16 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeI
         private dominoClient: DominoApiClient,
         private activeTunnels: Map<string, { port: number }> = new Map()
     ) {
-        console.log('WorkspaceProvider: Constructor called');
+        logger.info('WorkspaceProvider: Constructor called');
     }
 
     refresh(): void {
-        console.log('WorkspaceProvider: Refresh called');
+        logger.info('WorkspaceProvider: Refresh called');
         this._onDidChangeTreeData.fire();
     }
 
     getTreeItem(element: WorkspaceTreeItem): vscode.TreeItem {
-        console.log('WorkspaceProvider: getTreeItem called for:', element.label);
+        logger.info('WorkspaceProvider: getTreeItem called for:', element.label);
         return element;
     }
 
@@ -32,20 +33,20 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeI
             }
 
             if (!this.dominoClient.currentProjectId) {
-                console.log('WorkspaceProvider: No project selected');
+                logger.info('WorkspaceProvider: No project selected');
                 return [
                     new WorkspaceHeaderItem('Select a project to view workspaces', 'project-needed')
                 ];
             }
 
-            console.log('WorkspaceProvider: Getting workspaces...');
+            logger.info('WorkspaceProvider: Getting workspaces...');
             const workspaces = await this.dominoClient.getWorkspaces();
-            console.log('WorkspaceProvider: Received workspaces:', workspaces);
+            logger.info('WorkspaceProvider: Received workspaces:', workspaces);
             
             const items: WorkspaceTreeItem[] = [];
             
             if (!workspaces || workspaces.length === 0) {
-                console.log('WorkspaceProvider: No workspaces found');
+                logger.info('WorkspaceProvider: No workspaces found');
                 items.push(new WorkspaceHeaderItem('No workspaces found', 'no-workspaces'));
                 items.push(new WorkspaceActionItem(
                     'Create New Workspace',
@@ -79,7 +80,7 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeI
             ));
 
             const workspaceItems = workspaces.map(workspace => {
-                console.log('WorkspaceProvider: Processing workspace:', {
+                logger.info('WorkspaceProvider: Processing workspace:', {
                     id: workspace.id,
                     name: workspace.name,
                     state: workspace.state,
@@ -117,10 +118,10 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeI
             
             items.push(...workspaceItems);
             
-            console.log(`WorkspaceProvider: Created ${workspaceItems.length} workspace items`);
+            logger.info(`WorkspaceProvider: Created ${workspaceItems.length} workspace items`);
             return items;
         } catch (error) {
-            console.error('WorkspaceProvider error:', error);
+            logger.error('WorkspaceProvider error:', error);
             return [
                 new WorkspaceHeaderItem('Error loading workspaces', 'error'),
                 new WorkspaceHeaderItem('Try refreshing the view', 'help-text')

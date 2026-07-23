@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
+import { logger } from './logger';
 import * as fs from 'fs';
 import * as path from 'path';
 import FormData from 'form-data';
@@ -97,17 +98,17 @@ export class DominoApiClient {
 
                 await testClient.get('/projects');
                 this.apiVersion = version;
-                console.log(`Detected Domino API version: ${version}`);
+                logger.info(`Detected Domino API version: ${version}`);
                 return;
             } catch (error) {
                 const axiosError = error as AxiosError;
-                console.log(`API version ${version} failed:`, axiosError.response?.status);
+                logger.info(`API version ${version} failed:`, axiosError.response?.status);
                 continue;
             }
         }
         
         // Fallback to v4 if detection fails
-        console.log('Could not detect API version, using v4 as fallback');
+        logger.info('Could not detect API version, using v4 as fallback');
         this.apiVersion = 'v4';
     }
 
@@ -121,7 +122,7 @@ export class DominoApiClient {
             return response.data;
         } catch (error) {
             const axiosError = error as AxiosError;
-            console.error('Get projects error:', axiosError.response?.data || axiosError.message);
+            logger.error('Get projects error:', axiosError.response?.data || axiosError.message);
             throw error;
         }
     }
@@ -142,7 +143,7 @@ export class DominoApiClient {
         this.currentProjectId = projectId;
         this.currentProjectName = projectName || null;
         this.currentOwnerUsername = ownerUsername || null;
-        console.log(`Set current project: ${projectId} (${projectName})`);
+        logger.info(`Set current project: ${projectId} (${projectName})`);
     }
 
     async getCurrentUser(): Promise<any> {
@@ -153,10 +154,10 @@ export class DominoApiClient {
         try {
             // Get project details to extract the owner username
             const endpoint = `/projects/${this.currentProjectId}`;
-            console.log(`Getting project details from: ${endpoint}`);
+            logger.info(`Getting project details from: ${endpoint}`);
             
             const response = await this.httpClient.get(endpoint);
-            console.log('Project details response:', response.data);
+            logger.info('Project details response:', response.data);
             
             if (!response.data.ownerUsername) {
                 throw new Error('No ownerUsername found in project details');
@@ -168,7 +169,7 @@ export class DominoApiClient {
             };
         } catch (error) {
             const axiosError = error as AxiosError;
-            console.error('Get current user (project owner) error:', axiosError.response?.data || axiosError.message);
+            logger.error('Get current user (project owner) error:', axiosError.response?.data || axiosError.message);
             throw error;
         }
     }
@@ -190,10 +191,10 @@ export class DominoApiClient {
             });
 
             const endpoint = `/jobs/?${params.toString()}`;
-            console.log(`Getting jobs from: ${endpoint}`);
+            logger.info(`Getting jobs from: ${endpoint}`);
             
             const response = await this.httpClient.get(endpoint);
-            console.log('Jobs response:', {
+            logger.info('Jobs response:', {
                 jobsReceived: response.data?.jobs?.length || 0,
                 totalCount: response.data?.totalCount,
                 pagination: response.data?.pagination,
@@ -207,7 +208,7 @@ export class DominoApiClient {
                 const total = response.data.totalCount || response.data.total || jobs.length;
                 const hasMore = (offset + jobs.length) < total;
                 
-                console.log(`Found ${jobs.length} jobs (${offset + 1}-${offset + jobs.length} of ${total})`);
+                logger.info(`Found ${jobs.length} jobs (${offset + 1}-${offset + jobs.length} of ${total})`);
                 
                 return {
                     jobs,
@@ -215,7 +216,7 @@ export class DominoApiClient {
                     total
                 };
             } else {
-                console.log('No jobs data found in response');
+                logger.info('No jobs data found in response');
                 return {
                     jobs: [],
                     hasMore: false,
@@ -224,7 +225,7 @@ export class DominoApiClient {
             }
         } catch (error) {
             const axiosError = error as AxiosError;
-            console.error('Get jobs error:', axiosError.response?.data || axiosError.message);
+            logger.error('Get jobs error:', axiosError.response?.data || axiosError.message);
             throw error;
         }
     }
@@ -273,19 +274,19 @@ export class DominoApiClient {
                 jobPayload.commitId = options.commitId;
             }
 
-            console.log('Job payload:', JSON.stringify(jobPayload, null, 2));
+            logger.info('Job payload:', JSON.stringify(jobPayload, null, 2));
 
             // Use the updated endpoint
             const endpoint = `/jobs/start`;
-            console.log(`Running job at: ${endpoint}`);
+            logger.info(`Running job at: ${endpoint}`);
             
             const response = await this.httpClient.post(endpoint, jobPayload);
-            console.log('Job response:', response.data);
+            logger.info('Job response:', response.data);
             
             return response.data;
         } catch (error) {
             const axiosError = error as AxiosError;
-            console.error('Run job error:', {
+            logger.error('Run job error:', {
                 status: axiosError.response?.status,
                 statusText: axiosError.response?.statusText,
                 data: axiosError.response?.data,
@@ -304,14 +305,14 @@ export class DominoApiClient {
             // Get project settings to get the actual defaults
             const projectSettings = await this.getProjectSettings();
             
-            console.log('Project settings:', projectSettings);
+            logger.info('Project settings:', projectSettings);
 
             return {
                 defaultHardwareTier: projectSettings.defaultHardwareTierId || 'small-k8s',
                 defaultEnvironment: projectSettings.defaultEnvironmentId || ''
             };
         } catch (error) {
-            console.warn('Could not get project settings, using fallback defaults:', error);
+            logger.warn('Could not get project settings, using fallback defaults:', error);
             return {
                 defaultHardwareTier: 'small-k8s',
                 defaultEnvironment: ''
@@ -326,15 +327,15 @@ export class DominoApiClient {
 
         try {
             const endpoint = `/projects/${this.currentProjectId}/settings`;
-            console.log(`Getting project settings from: ${endpoint}`);
+            logger.info(`Getting project settings from: ${endpoint}`);
             
             const response = await this.httpClient.get(endpoint);
-            console.log('Project settings response:', response.data);
+            logger.info('Project settings response:', response.data);
             
             return response.data;
         } catch (error) {
             const axiosError = error as AxiosError;
-            console.error('Get project settings error:', axiosError.response?.data || axiosError.message);
+            logger.error('Get project settings error:', axiosError.response?.data || axiosError.message);
             throw error;
         }
     }
@@ -349,10 +350,10 @@ export class DominoApiClient {
 
             // Add required query parameters
             const endpoint = `/workspace/project/${this.currentProjectId}/workspace?offset=0&limit=50`;
-            console.log(`Getting workspaces from: ${endpoint}`);
+            logger.info(`Getting workspaces from: ${endpoint}`);
 
             const response = await this.httpClient.get(endpoint);
-            console.log('Workspaces response:', response.data);
+            logger.info('Workspaces response:', response.data);
 
             // Handle different response formats
             let workspaces: any[];
@@ -363,17 +364,17 @@ export class DominoApiClient {
             } else if (response.data && response.data.data) {
                 workspaces = response.data.data;
             } else {
-                console.log('No workspaces array found in response');
+                logger.info('No workspaces array found in response');
                 return [];
             }
 
             // Only show workspaces owned by the current user
             const ownedWorkspaces = workspaces.filter(ws => ws.ownerId === self.id);
-            console.log(`Found ${workspaces.length} workspaces total, ${ownedWorkspaces.length} owned by current user`);
+            logger.info(`Found ${workspaces.length} workspaces total, ${ownedWorkspaces.length} owned by current user`);
             return ownedWorkspaces;
         } catch (error) {
             const axiosError = error as AxiosError;
-            console.error('Get workspaces error:', axiosError.response?.data || axiosError.message);
+            logger.error('Get workspaces error:', axiosError.response?.data || axiosError.message);
             return []; // Return empty array instead of throwing
         }
     }
@@ -400,7 +401,7 @@ export class DominoApiClient {
 
             // Build the new endpoint format: /u/<USERNAME>/<project-NAME>/run/synchronizeRunWorkingDirectory/<run-id>
             const directUrl = `${this._apiUrl}/u/${currentUser.userName}/${this.currentProjectName}/run/synchronizeRunWorkingDirectory/${executionId}`;
-            console.log(`Committing workspace at: ${directUrl}`);
+            logger.info(`Committing workspace at: ${directUrl}`);
             
             const requestBody = {
                 uploadLocalChanges: true,
@@ -419,11 +420,11 @@ export class DominoApiClient {
                 timeout: 30000
             });
             
-            console.log('Workspace commit successful');
+            logger.info('Workspace commit successful');
             return response.data;
         } catch (error) {
             const axiosError = error as AxiosError;
-            console.error('Commit workspace error details:', {
+            logger.error('Commit workspace error details:', {
                 status: axiosError.response?.status,
                 statusText: axiosError.response?.statusText,
                 data: axiosError.response?.data,
@@ -440,13 +441,13 @@ export class DominoApiClient {
 
         try {
             const endpoint = `/workspace/project/${this.currentProjectId}/workspace/${workspaceId}/stop`;
-            console.log(`Stopping workspace at: ${endpoint}`);
+            logger.info(`Stopping workspace at: ${endpoint}`);
             
             await this.httpClient.post(endpoint);
-            console.log('Workspace stop request sent successfully');
+            logger.info('Workspace stop request sent successfully');
         } catch (error) {
             const axiosError = error as AxiosError;
-            console.error('Stop workspace error:', axiosError.response?.data || axiosError.message);
+            logger.error('Stop workspace error:', axiosError.response?.data || axiosError.message);
             throw error;
         }
     }
@@ -466,7 +467,7 @@ export class DominoApiClient {
             }
 
             const endpoint = `/workspace/project/${this.currentProjectId}/workspace/${workspaceId}/sessions?externalVolumeMounts=`;
-            console.log(`Starting workspace at: ${endpoint}`);
+            logger.info(`Starting workspace at: ${endpoint}`);
             
             // Use the existing workspace configuration, especially the mounts
             const requestBody = {
@@ -477,14 +478,14 @@ export class DominoApiClient {
                 importedGitRepos: workspace.importedGitRepos || []
             };
             
-            console.log('Start workspace request body:', requestBody);
+            logger.info('Start workspace request body:', requestBody);
             
             const response = await this.httpClient.post(endpoint, requestBody);
-            console.log('Workspace start response:', response.data);
+            logger.info('Workspace start response:', response.data);
             return response.data;
         } catch (error) {
             const axiosError = error as AxiosError;
-            console.error('Start workspace error:', axiosError.response?.data || axiosError.message);
+            logger.error('Start workspace error:', axiosError.response?.data || axiosError.message);
             throw error;
         }
     }
@@ -497,14 +498,14 @@ export class DominoApiClient {
         try {
             // Use the correct endpoint format
             const endpoint = `/workspace/project/${this.currentProjectId}/workspace/${workspaceId}`;
-            console.log(`Getting workspace details from: ${endpoint}`);
+            logger.info(`Getting workspace details from: ${endpoint}`);
             
             const response = await this.httpClient.get(endpoint);
-            console.log('Workspace details response:', response.data);
+            logger.info('Workspace details response:', response.data);
             return response.data;
         } catch (error) {
             const axiosError = error as AxiosError;
-            console.error('Get workspace details error:', axiosError.response?.data || axiosError.message);
+            logger.error('Get workspace details error:', axiosError.response?.data || axiosError.message);
             throw error;
         }
     }
@@ -523,7 +524,7 @@ export class DominoApiClient {
             for (const endpoint of endpoints) {
                 try {
                     const response = await this.httpClient.get(endpoint);
-                    console.log(`Hardware tiers from ${endpoint}:`, response.data);
+                    logger.info(`Hardware tiers from ${endpoint}:`, response.data);
                     
                     if (Array.isArray(response.data)) {
                         // Transform the nested structure to a flat structure for easier use
@@ -548,7 +549,7 @@ export class DominoApiClient {
                             };
                         }).filter(tier => tier.isVisible); // Only show visible tiers
                         
-                        console.log('Transformed hardware tiers:', transformedTiers);
+                        logger.info('Transformed hardware tiers:', transformedTiers);
                         return transformedTiers;
                     }
                     return [];
@@ -562,7 +563,7 @@ export class DominoApiClient {
             }
 
             // If no endpoint works, return a default set
-            console.warn('No hardware tiers endpoint found, returning defaults');
+            logger.warn('No hardware tiers endpoint found, returning defaults');
             return [
                 { 
                     id: 'small-k8s', 
@@ -600,7 +601,7 @@ export class DominoApiClient {
             ];
         } catch (error) {
             const axiosError = error as AxiosError;
-            console.error('Get hardware tiers error:', axiosError.response?.data || axiosError.message);
+            logger.error('Get hardware tiers error:', axiosError.response?.data || axiosError.message);
             return [
                 { 
                     id: 'small-k8s', 
@@ -634,7 +635,7 @@ export class DominoApiClient {
             for (const endpoint of endpoints) {
                 try {
                     const response = await this.httpClient.get(endpoint);
-                    console.log(`Environments from ${endpoint}:`, response.data);
+                    logger.info(`Environments from ${endpoint}:`, response.data);
                     
                     // Handle the useableEnvironments response format
                     if (response.data && (response.data.environments || response.data.currentlySelectedEnvironment)) {
@@ -682,7 +683,7 @@ export class DominoApiClient {
                         // Filter out archived environments
                         const activeEnvironments = environments.filter(env => !env.archived);
                         
-                        console.log('Transformed environments:', activeEnvironments);
+                        logger.info('Transformed environments:', activeEnvironments);
                         return activeEnvironments;
                     }
                     
@@ -701,7 +702,7 @@ export class DominoApiClient {
                             _original: env
                         })).filter((env: any) => !env.archived); // Filter out archived environments
                         
-                        console.log('Transformed environments (simple array):', transformedEnvs);
+                        logger.info('Transformed environments (simple array):', transformedEnvs);
                         return transformedEnvs;
                     }
                     
@@ -716,11 +717,11 @@ export class DominoApiClient {
             }
 
             // If no endpoint works, return empty array (environment is optional)
-            console.warn('No environments endpoint found, returning empty array');
+            logger.warn('No environments endpoint found, returning empty array');
             return [];
         } catch (error) {
             const axiosError = error as AxiosError;
-            console.error('Get environments error:', axiosError.response?.data || axiosError.message);
+            logger.error('Get environments error:', axiosError.response?.data || axiosError.message);
             return [];
         }
     }
@@ -732,10 +733,10 @@ export class DominoApiClient {
 
         try {
             const endpoint = `/workspaces/project/${this.currentProjectId}/environment/${environmentId}/availableTools`;
-            console.log(`Getting available tools from: ${endpoint}`);
+            logger.info(`Getting available tools from: ${endpoint}`);
 
             const response = await this.httpClient.get(endpoint);
-            console.log('Available tools response:', response.data);
+            logger.info('Available tools response:', response.data);
 
             if (response.data && response.data.workspaceTools) {
                 return response.data.workspaceTools.map((tool: any) => ({
@@ -748,7 +749,7 @@ export class DominoApiClient {
             return [];
         } catch (error) {
             const axiosError = error as AxiosError;
-            console.error('Get available tools error:', axiosError.response?.data || axiosError.message);
+            logger.error('Get available tools error:', axiosError.response?.data || axiosError.message);
             throw error;
         }
     }
@@ -765,7 +766,7 @@ export class DominoApiClient {
 
         try {
             const endpoint = `/workspace/project/${this.currentProjectId}/workspace`;
-            console.log(`Creating workspace at: ${endpoint}`);
+            logger.info(`Creating workspace at: ${endpoint}`);
 
             const requestBody = {
                 name: name,
@@ -776,14 +777,14 @@ export class DominoApiClient {
                 ssh: { enabled: true }
             };
 
-            console.log('Create workspace payload:', JSON.stringify(requestBody, null, 2));
+            logger.info('Create workspace payload:', JSON.stringify(requestBody, null, 2));
 
             const response = await this.httpClient.post(endpoint, requestBody);
-            console.log('Create workspace response:', response.data);
+            logger.info('Create workspace response:', response.data);
             return response.data;
         } catch (error) {
             const axiosError = error as AxiosError;
-            console.error('Create workspace error:', {
+            logger.error('Create workspace error:', {
                 status: axiosError.response?.status,
                 statusText: axiosError.response?.statusText,
                 data: axiosError.response?.data,
@@ -812,7 +813,7 @@ export class DominoApiClient {
                 });
             } catch (error) {
                 const axiosError = error as AxiosError;
-                console.error(`Failed to upload ${file}:`, axiosError.response?.data || axiosError.message);
+                logger.error(`Failed to upload ${file}:`, axiosError.response?.data || axiosError.message);
             }
         }
     }
@@ -851,7 +852,7 @@ export class DominoApiClient {
             return response.data;
         } catch (error) {
             const axiosError = error as AxiosError;
-            console.error('Get models error:', axiosError.response?.data || axiosError.message);
+            logger.error('Get models error:', axiosError.response?.data || axiosError.message);
             return []; // Return empty array instead of throwing
         }
     }
@@ -913,7 +914,7 @@ export class DominoApiClient {
             await this.httpClient.post('/jobs/stop', { jobId, commitResults: false });
         } catch (error) {
             const axiosError = error as AxiosError;
-            console.error('Cancel job error:', axiosError.response?.data || axiosError.message);
+            logger.error('Cancel job error:', axiosError.response?.data || axiosError.message);
             throw error;
         }
     }

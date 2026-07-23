@@ -1,4 +1,5 @@
 import * as crypto from 'crypto';
+import { logger } from './logger';
 import * as http from 'http';
 import * as net from 'net';
 import * as vscode from 'vscode';
@@ -187,7 +188,7 @@ export async function revokeTokens(tokens: TokenSet, clientId: string): Promise<
         );
     } catch (error) {
         // Revocation failure should not block sign-out
-        console.warn('Token revocation failed (continuing with local sign-out):', error);
+        logger.warn('Token revocation failed (continuing with local sign-out):', error);
     }
 }
 
