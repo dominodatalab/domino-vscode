@@ -240,6 +240,72 @@ describe('DominoApiClient – getWorkspaces', () => {
 
         expect(result).toEqual([]);
     });
+
+    it('fetches a single page when totalWorkspaceCount fits within the page size', async () => {
+        const { client, http } = makeAuthenticatedClient();
+        jest.spyOn(client, 'getSelf').mockResolvedValue({ id: 'user-1', userName: 'alice' });
+
+        http.get.mockResolvedValue({
+            data: {
+                workspaces: [{ id: 'ws-1', ownerId: 'user-1', name: 'Mine' }],
+                totalWorkspaceCount: 1,
+                offset: 0,
+                limit: 50,
+            },
+        });
+
+        const result = await client.getWorkspaces();
+
+        expect(result).toHaveLength(1);
+        expect(http.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('pages through results when totalWorkspaceCount exceeds one page', async () => {
+        const { client, http } = makeAuthenticatedClient();
+        jest.spyOn(client, 'getSelf').mockResolvedValue({ id: 'user-1', userName: 'alice' });
+
+        const makePage = (offset: number, count: number) => ({
+            data: {
+                workspaces: Array.from({ length: count }, (_, i) => ({
+                    id: `ws-${offset + i}`,
+                    ownerId: 'user-1',
+                    name: `Workspace ${offset + i}`,
+                })),
+                totalWorkspaceCount: 120,
+                offset,
+                limit: 50,
+            },
+        });
+
+        http.get
+            .mockResolvedValueOnce(makePage(0, 50))
+            .mockResolvedValueOnce(makePage(50, 50))
+            .mockResolvedValueOnce(makePage(100, 20));
+
+        const result = await client.getWorkspaces();
+
+        expect(http.get).toHaveBeenCalledTimes(3);
+        expect(http.get.mock.calls[0][0]).toContain('offset=0');
+        expect(http.get.mock.calls[1][0]).toContain('offset=50');
+        expect(http.get.mock.calls[2][0]).toContain('offset=100');
+        expect(result).toHaveLength(120);
+    });
+
+    it('stops paginating if a page returns fewer items than expected without reaching total', async () => {
+        const { client, http } = makeAuthenticatedClient();
+        jest.spyOn(client, 'getSelf').mockResolvedValue({ id: 'user-1', userName: 'alice' });
+
+        http.get
+            .mockResolvedValueOnce({
+                data: { workspaces: [{ id: 'ws-0', ownerId: 'user-1' }], totalWorkspaceCount: 5, offset: 0, limit: 50 },
+            })
+            .mockResolvedValueOnce({ data: { workspaces: [], totalWorkspaceCount: 5, offset: 1, limit: 50 } });
+
+        const result = await client.getWorkspaces();
+
+        expect(http.get).toHaveBeenCalledTimes(2);
+        expect(result).toHaveLength(1);
+    });
 });
 
 describe('DominoApiClient – getHardwareTiers', () => {

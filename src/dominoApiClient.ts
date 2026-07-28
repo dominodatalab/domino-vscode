@@ -348,29 +348,51 @@ export class DominoApiClient {
         try {
             const self = await this.getSelf();
 
-            // Add required query parameters
-            const endpoint = `/workspace/project/${this.currentProjectId}/workspace?offset=0&limit=50`;
-            logger.info(`Getting workspaces from: ${endpoint}`);
+            const pageSize = 50;
+            const maxPages = 200; // safety net: 10,000 workspaces
+            let offset = 0;
+            let total = Infinity;
+            const allWorkspaces: any[] = [];
 
-            const response = await this.httpClient.get(endpoint);
-            logger.info('Workspaces response:', response.data);
+            for (let page = 0; offset < total && page < maxPages; page++) {
+                const endpoint = `/workspace/project/${this.currentProjectId}/workspace?offset=${offset}&limit=${pageSize}`;
+                logger.info(`Getting workspaces from: ${endpoint}`);
 
-            // Handle different response formats
-            let workspaces: any[];
-            if (response.data && Array.isArray(response.data)) {
-                workspaces = response.data;
-            } else if (response.data && response.data.workspaces) {
-                workspaces = response.data.workspaces;
-            } else if (response.data && response.data.data) {
-                workspaces = response.data.data;
-            } else {
-                logger.info('No workspaces array found in response');
-                return [];
+                const response = await this.httpClient.get(endpoint);
+                logger.info('Workspaces response:', response.data);
+
+                // Handle different response formats
+                let pageWorkspaces: any[];
+                if (response.data && Array.isArray(response.data)) {
+                    pageWorkspaces = response.data;
+                    total = pageWorkspaces.length; // no pagination metadata available
+                } else if (response.data && Array.isArray(response.data.workspaces)) {
+                    pageWorkspaces = response.data.workspaces;
+                    total = response.data.totalWorkspaceCount ?? (offset + pageWorkspaces.length);
+                } else if (response.data && Array.isArray(response.data.data)) {
+                    pageWorkspaces = response.data.data;
+                    total = response.data.totalWorkspaceCount ?? (offset + pageWorkspaces.length);
+                } else {
+                    logger.info('No workspaces array found in response');
+                    break;
+                }
+
+                allWorkspaces.push(...pageWorkspaces);
+
+                if (pageWorkspaces.length === 0) {
+                    break; // avoid an infinite loop if the server misreports total count
+                }
+
+                offset += pageWorkspaces.length;
+            }
+
+            if (offset < total) {
+                logger.warn(`Stopped paginating workspaces after ${maxPages} pages; more may exist`);
             }
 
             // Only show workspaces owned by the current user
-            const ownedWorkspaces = workspaces.filter(ws => ws.ownerId === self.id);
-            logger.info(`Found ${workspaces.length} workspaces total, ${ownedWorkspaces.length} owned by current user`);
+            const ownedWorkspaces = allWorkspaces.filter(ws => ws.ownerId === self.id);
+            logger.info(`Found ${allWorkspaces.length} workspaces total, ${ownedWorkspaces.length} owned by current user`);
             return ownedWorkspaces;
         } catch (error) {
             const axiosError = error as AxiosError;
