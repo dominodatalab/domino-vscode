@@ -8,6 +8,7 @@ import { DominoApiClient } from './dominoApiClient';
 import { ProjectProvider } from './projectProvider';
 import { JobProvider } from './jobProvider';
 import { WorkspaceProvider } from './workspaceProvider';
+import { buildDomConnectArgs, formatTierDataPlane, getRemoteDataPlaneHost, getWorkspaceDataPlane, DataPlaneInfo } from './dataPlane';
 import { logger, initLogger } from './logger';
 import {
     TokenSet,
@@ -333,7 +334,21 @@ async function connectSSH(workspaceItem?: any) {
         const config = vscode.workspace.getConfiguration('domino');
         const backgroundMode = config.get<boolean>('sshBackgroundProxy', false);
 
-        const domArgs = ['connect', workspaceId, `--domino-api-host=${apiUrl}`, '-l', config.get<string>('sshUser', 'ubuntu')];
+        // Workspaces in a remote data plane are reached through that data plane's domino-connect service
+        let dataPlane: DataPlaneInfo | undefined = workspaceItem.dataPlane;
+        if (!dataPlane?.host) {
+            try {
+                dataPlane = getWorkspaceDataPlane(await dominoClient.getWorkspaceDetails(workspaceId));
+            } catch (err) {
+                logger.info('Could not look up workspace data plane, assuming local data plane:', err);
+            }
+        }
+        const dataPlaneHost = dataPlane ? getRemoteDataPlaneHost(dataPlane, apiUrl) : undefined;
+        const timeoutHint = dataPlaneHost
+            ? ` Check that Domino Connect is installed on data plane ${dataPlaneHost}.`
+            : '';
+
+        const domArgs = buildDomConnectArgs(workspaceId, apiUrl, config.get<string>('sshUser', 'ubuntu'), dataPlaneHost);
         let port: number;
 
         if (backgroundMode) {
@@ -357,7 +372,7 @@ async function connectSSH(workspaceItem?: any) {
             try {
                 port = await waitForDominoSshConfig(workspaceId);
             } catch (err) {
-                vscode.window.showErrorMessage(`Failed to establish SSH tunnel for "${workspaceName}": timed out waiting for dom connect to start`);
+                vscode.window.showErrorMessage(`Failed to establish SSH tunnel for "${workspaceName}": timed out waiting for dom connect to start.${timeoutHint}`);
                 try { process.kill(proc.pid!, 'SIGTERM'); } catch { /* already dead */ }
                 return;
             }
@@ -370,7 +385,7 @@ async function connectSSH(workspaceItem?: any) {
 
         } else {
             // --- Terminal mode: run dom connect in a visible VSCode terminal (default) ---
-            const command = `dom connect ${workspaceId} --domino-api-host=${apiUrl} -l ${config.get<string>('sshUser', 'ubuntu')}`;
+            const command = `dom ${domArgs.join(' ')}`;
             logger.info(`Running in terminal: ${command}`);
 
             const terminal = vscode.window.createTerminal({ name: `SSH: ${workspaceName}` });
@@ -381,7 +396,7 @@ async function connectSSH(workspaceItem?: any) {
             try {
                 port = await waitForDominoSshConfig(workspaceId);
             } catch (err) {
-                vscode.window.showErrorMessage(`Failed to establish SSH tunnel for "${workspaceName}": timed out waiting for dom connect to start`);
+                vscode.window.showErrorMessage(`Failed to establish SSH tunnel for "${workspaceName}": timed out waiting for dom connect to start.${timeoutHint}`);
                 terminal.dispose();
                 return;
             }
@@ -805,6 +820,10 @@ async function runJob(prefilledCommand?: string, prefilledTitle?: string) {
                 if (tier.gpus && tier.gpus > 0) {
                     details.push(`${tier.gpus} GPU${tier.gpus !== 1 ? 's' : ''}`);
                 }
+                const tierDataPlane = formatTierDataPlane(tier);
+                if (tierDataPlane) {
+                    details.push(tierDataPlane);
+                }
                 
                 const description = details.length > 0 ? details.join(', ') : tier.description || '';
                 const isDefault = tier.id === configOptions.projectSettings?.defaultHardwareTierId;
@@ -1043,6 +1062,10 @@ async function runJobWithFile(fileUri?: vscode.Uri) {
                 }
                 if (tier.gpus && tier.gpus > 0) {
                     details.push(`${tier.gpus} GPU${tier.gpus !== 1 ? 's' : ''}`);
+                }
+                const tierDataPlane = formatTierDataPlane(tier);
+                if (tierDataPlane) {
+                    details.push(tierDataPlane);
                 }
                 
                 const description = details.length > 0 ? details.join(', ') : tier.description || '';
@@ -1499,6 +1522,8 @@ async function createNewWorkspace() {
             if (tier.cpu !== 'N/A') { details.push(`${tier.cpu} CPU${tier.cpu !== '1' ? 's' : ''}`); }
             if (tier.memory !== 'N/A') { details.push(`${tier.memory} ${tier.memoryUnit || 'GiB'} RAM`); }
             if (tier.gpus && tier.gpus > 0) { details.push(`${tier.gpus} GPU${tier.gpus !== 1 ? 's' : ''}`); }
+            const tierDataPlane = formatTierDataPlane(tier);
+            if (tierDataPlane) { details.push(tierDataPlane); }
             const isDefault = tier.id === configOptions.projectSettings?.defaultHardwareTierId;
             return {
                 label: `${tier.name}${isDefault ? ' (default)' : ''}`,

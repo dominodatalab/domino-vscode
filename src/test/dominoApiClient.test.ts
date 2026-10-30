@@ -341,6 +341,29 @@ describe('DominoApiClient – getHardwareTiers', () => {
         });
     });
 
+    it('includes the data plane id and name for each tier', async () => {
+        const { client, http } = makeAuthenticatedClient();
+        http.get.mockResolvedValue({
+            data: [
+                {
+                    hardwareTier: {
+                        id: 'small-k8s', name: 'Small', hwtFlags: { isVisible: true },
+                        dataPlaneId: '000000000000000000000000', dataPlaneName: 'Local',
+                    },
+                },
+                {
+                    hardwareTier: { id: 'GCP-Small', name: 'GCP-Small', hwtFlags: { isVisible: true } },
+                    dataPlane: { id: '69a1dab5bd21ec33047a35cb', name: 'GCP' },
+                },
+            ],
+        });
+
+        const result = await client.getHardwareTiers();
+
+        expect(result[0]).toMatchObject({ dataPlaneId: '000000000000000000000000', dataPlaneName: 'Local' });
+        expect(result[1]).toMatchObject({ dataPlaneId: '69a1dab5bd21ec33047a35cb', dataPlaneName: 'GCP' });
+    });
+
     it('filters out tiers where isVisible is false', async () => {
         const { client, http } = makeAuthenticatedClient();
         http.get.mockResolvedValue({

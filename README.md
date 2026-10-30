@@ -18,7 +18,7 @@ Manage Domino Data Lab jobs and workspaces without leaving your IDE. Authenticat
 
 ## Features
 
-- **Connect to workspaces via SSH** — open a Remote-SSH window directly into a running Domino workspace
+- **Connect to workspaces via SSH** — open a Remote-SSH window directly into a running Domino workspace, in the local data plane or a remote data plane
 - **Run jobs** — submit any file or custom command as a Domino job, with hardware tier and environment selection
 - **Manage projects** — browse, create, and switch projects from the sidebar
 - **Monitor workspaces & jobs** — real-time status with auto-refresh, pagination, and browser integration
@@ -39,6 +39,14 @@ The headline feature of this extension is the ability to SSH directly into a run
 4. A new VS Code Remote-SSH window opens, connected to your workspace at `/mnt` by default.
 
 To disconnect, right-click the workspace and select **Disconnect SSH Tunnel**. The extension kills the tunnel process and cleans up the SSH config entry.
+
+### Remote data planes
+
+Workspaces running in a remote (Hybrid) data plane are supported. The extension reads each workspace's data plane from the Domino API and, for workspaces outside the local data plane, passes `--data-plane=<data-plane-host>` to `dom connect` so the tunnel goes through that data plane. Workspaces in the local data plane connect exactly as before.
+
+Remote data plane workspaces show the data plane name in the **Domino Workspaces** panel (for example `Started • by alice • AWS-DP`), with the data plane host in the tooltip. Hardware tiers that run in a remote data plane show `Data plane: <name>` in the hardware tier picker.
+
+> **Prerequisite:** Workspace SSH (the `domino-connect` service) must be installed in **each remote data plane**, not only in the control plane. Ask your Domino administrator to enable it in the data plane's installer configuration (`domino-connect.installed: true`). If it isn't enabled, `dom connect` fails with *"Failed to retrieve Domino Connect server version"* and the extension reports that the tunnel timed out.
 
 ### Background proxy mode
 

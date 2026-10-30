@@ -9,6 +9,7 @@ function makeMockClient(overrides: {
         isAuthenticated: overrides.isAuthenticated ?? true,
         currentProjectId: 'currentProjectId' in overrides ? overrides.currentProjectId : 'proj-1',
         apiHost: 'domino.example.com',
+        apiUrl: 'https://domino.example.com',
         getWorkspaces: jest.fn().mockResolvedValue(overrides.workspaces ?? []),
     };
 }
@@ -151,6 +152,48 @@ describe('WorkspaceProvider – getChildren with workspaces', () => {
         const wsItem = items.find(i => i.contextValue === 'workspace-running-ssh')!;
 
         expect(wsItem.description as string).toContain(':2222');
+    });
+});
+
+describe('WorkspaceProvider – data planes', () => {
+    const remoteWorkspace = {
+        id: 'ws-gcp', name: 'GCP Dev', state: 'Started', ownerName: 'alice', createdAt: '',
+        dataPlaneId: '69a1dab5bd21ec33047a35cb',
+        configTemplate: {
+            hardwareTier: { dataPlane: { id: '69a1dab5bd21ec33047a35cb', name: 'GCP' } },
+            dataPlane: { host: 'gcp.domino.example.com' },
+        },
+    };
+    const localWorkspace = {
+        id: 'ws-local', name: 'Local Dev', state: 'Started', ownerName: 'alice', createdAt: '',
+        dataPlaneId: '000000000000000000000000',
+        configTemplate: {
+            hardwareTier: { dataPlane: { id: '000000000000000000000000', name: 'Local' } },
+            dataPlane: { host: 'domino.example.com' },
+        },
+    };
+
+    it('attaches data plane info to remote workspace items', async () => {
+        const provider = new WorkspaceProvider(makeMockClient({ workspaces: [remoteWorkspace] }) as any);
+
+        const items = await provider.getChildren();
+        const wsItem = items.find(i => i.contextValue === 'workspace-running') as any;
+
+        expect(wsItem.dataPlane).toEqual({ id: '69a1dab5bd21ec33047a35cb', name: 'GCP', host: 'gcp.domino.example.com' });
+        expect(wsItem.isRemoteDataPlane).toBe(true);
+        expect(wsItem.description as string).toContain('GCP');
+        expect(wsItem.tooltip.value).toContain('gcp.domino.example.com');
+    });
+
+    it('does not label local data plane workspaces', async () => {
+        const provider = new WorkspaceProvider(makeMockClient({ workspaces: [localWorkspace] }) as any);
+
+        const items = await provider.getChildren();
+        const wsItem = items.find(i => i.contextValue === 'workspace-running') as any;
+
+        expect(wsItem.isRemoteDataPlane).toBe(false);
+        expect(wsItem.description).toBe('Started • by alice');
+        expect(wsItem.tooltip.value).not.toContain('Data Plane');
     });
 });
 

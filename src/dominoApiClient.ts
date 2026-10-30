@@ -566,6 +566,9 @@ export class DominoApiClient {
                                 // Include flags for additional info
                                 isDefault: tier.hwtFlags?.isDefault || false,
                                 isVisible: tier.hwtFlags?.isVisible !== false, // Default to visible if not specified
+                                // Data plane the tier runs in (local or remote)
+                                dataPlaneId: tier.dataPlaneId || item.dataPlane?.id,
+                                dataPlaneName: tier.dataPlaneName || item.dataPlane?.name,
                                 // Include the full original object for reference
                                 _original: tier
                             };

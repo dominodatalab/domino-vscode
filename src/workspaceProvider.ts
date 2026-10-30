@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { logger } from './logger';
 import { DominoApiClient } from './dominoApiClient';
+import { DataPlaneInfo, getWorkspaceDataPlane, isRemoteDataPlane } from './dataPlane';
 
 // Union type for workspace tree items
 type WorkspaceTreeItem = WorkspaceItem | WorkspaceHeaderItem | WorkspaceActionItem;
@@ -103,6 +104,9 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeI
                     workspaceUrl = `https://${host}/workspace/${workspaceId}`;
                 }
                 
+                const dataPlane = getWorkspaceDataPlane(workspace);
+                const isRemote = isRemoteDataPlane(dataPlane, this.dominoClient.apiUrl || '');
+
                 const tunnel = this.activeTunnels.get(workspaceId);
                 return new WorkspaceItem(
                     workspaceName,
@@ -112,7 +116,9 @@ export class WorkspaceProvider implements vscode.TreeDataProvider<WorkspaceTreeI
                     createdTime,
                     workspace.ownerName || 'Unknown',
                     vscode.TreeItemCollapsibleState.None,
-                    tunnel?.port
+                    tunnel?.port,
+                    dataPlane,
+                    isRemote
                 );
             });
             
@@ -139,18 +145,25 @@ class WorkspaceItem extends vscode.TreeItem {
         public readonly startedTime: string,
         public readonly ownerName: string,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-        public readonly tunnelPort?: number
+        public readonly tunnelPort?: number,
+        public readonly dataPlane: DataPlaneInfo = {},
+        public readonly isRemoteDataPlane: boolean = false
     ) {
         super(label, collapsibleState);
 
         const ownerInfo = ownerName && ownerName !== 'Unknown' ? ` • by ${ownerName}` : '';
+        const dataPlaneLabel = dataPlane.name || dataPlane.host || dataPlane.id || 'Remote';
+        const dataPlaneInfo = isRemoteDataPlane ? ` • ${dataPlaneLabel}` : '';
         const sshInfo = tunnelPort ? ` • SSH :${tunnelPort}` : '';
-        this.description = `${status}${ownerInfo}${sshInfo}`;
+        this.description = `${status}${ownerInfo}${dataPlaneInfo}${sshInfo}`;
 
         // Enhanced tooltip with markdown formatting
         const formattedTime = startedTime ? new Date(startedTime).toLocaleString() : 'N/A';
         const sshTooltip = tunnelPort
             ? `\n**SSH Tunnel:** Active on port ${tunnelPort}\n**SSH Command:** \`ssh -p ${tunnelPort} ubuntu@localhost\``
+            : '';
+        const dataPlaneTooltip = isRemoteDataPlane
+            ? `\n**Data Plane:** ${dataPlaneLabel}${dataPlane.host ? ` (\`${dataPlane.host}\`)` : ''}`
             : '';
         this.tooltip = new vscode.MarkdownString(`
 **${label}**
@@ -158,7 +171,7 @@ class WorkspaceItem extends vscode.TreeItem {
 **Status:** ${status}
 **Owner:** ${ownerName}
 **Created:** ${formattedTime}
-**Workspace ID:** \`${workspaceId}\`
+**Workspace ID:** \`${workspaceId}\`${dataPlaneTooltip}
 ${url ? `**URL:** ${url}` : ''}${sshTooltip}
 
 ${status.toLowerCase() === 'started' || status.toLowerCase() === 'running'
